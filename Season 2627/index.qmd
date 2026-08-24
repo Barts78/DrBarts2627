@@ -1,6 +1,6 @@
 ---
 title: "Dr Barts"
-subtitle: "Season 25-26"
+subtitle: "Season 26-27"
 image: Images/Social_profile.png
 
 format:
@@ -42,7 +42,7 @@ I am a part time football analyst specialising in the Quarto and R ecosystems.
 <b>Bio</b>
 :::
 
-This is a home for my football visualisation work across **AI UP** and **TMM** pods  for **Season**   **2025 - 2026**
+This is a home for my football visualisation work across **AI UP** and **TMM** pods  for **Season**   **2026 - 2027**
 ::::
 ## Browse by Competition
 
