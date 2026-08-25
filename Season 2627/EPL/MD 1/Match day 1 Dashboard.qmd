@@ -1381,16 +1381,14 @@ TeamPressPlot_OPTA <- function(
   
   method_caption <- ifelse(
     method == "quantile",
-    "Area = central 75% of pressing activity using quantiles",
-    "Area = pressing activity within 1.5 MAD of the median"
+    "\nArea = central 75% of pressing activity using quantiles",
+    "\nArea = pressing activity within 1.5 MAD of the median"
   )
   
   plot_subtitle <- paste(subtitle,
     method_caption,
-    "\nDirection of play from left to right.",
-    "\nRed fill = Counter Press | Circle = Press Leading to Shot",
-    "\nSquare = Direct Possession Win | X = Failed Press | Triangle = Counter Attack",
-    "\nDiamond = Group Press | Star = Turnover"
+    "\nDirection of play from left to right | Red fill = Counter Press | Circle = Press Leading to Shot",
+    "\nSquare = Direct Possession Win | X = Failed Press | Diamond = Group Press | Star = Turnover| Triangle = Counter Attack"
   )
   
   
@@ -1490,7 +1488,7 @@ TeamPressPlot_OPTA <- function(
           )
         ),
         alpha = 0.15,
-        linewidth = 0.8
+        linewidth = 0.5
       )
   }
   
@@ -1518,8 +1516,8 @@ TeamPressPlot_OPTA <- function(
       ),
       alpha = 0.8,
       shape = 21,
-      size = 2.5,
-      stroke = 0.7
+      size = 1.5,
+      stroke = 0.5
     ) +
     
     geom_text(
@@ -1530,7 +1528,7 @@ TeamPressPlot_OPTA <- function(
         label = .data$playerId,
         colour = .data$playerId
       ),
-      size = 2.5,
+      size = 2,
       fontface = "bold",
       show.legend = FALSE
     )
@@ -1561,7 +1559,7 @@ TeamPressPlot_OPTA <- function(
           )
         ),
         shape = 4,
-        size = 2.5,
+        size = 1.5,
         alpha = 0.8,
         stroke = 1
       )
@@ -1593,7 +1591,7 @@ TeamPressPlot_OPTA <- function(
           )
         ),
         shape = 2,
-        size = 2.5,
+        size = 1.5,
         alpha = 0.8,
         stroke = 1
       )
@@ -1628,7 +1626,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 23,
           fill = "#E5E5E5",
-          size = 2.8,
+          size = 1.5,
           alpha = 0.8,
           stroke = 1
         )
@@ -1656,7 +1654,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 23,
           fill = color,
-          size = 2.8,
+          size = 1.5,
           alpha = 0.8,
           stroke = 1
         )
@@ -1689,7 +1687,7 @@ TeamPressPlot_OPTA <- function(
           )
         ),
         shape = 8,
-        size = 2.8,
+        size = 1.5,
         alpha = 0.8,
         stroke = 1
       )
@@ -1724,7 +1722,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 24,
           fill = "#E5E5E5",
-          size = 2.8,
+          size = 1.5,
           alpha = 0.8,
           stroke = 1
         )
@@ -1752,7 +1750,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 24,
           fill = color,
-          size = 2.8,
+          size = 1.5,
           alpha = 0.8,
           stroke = 1
         )
@@ -1788,7 +1786,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 22,
           fill = "#E5E5E5",
-          size = 2.8,
+          size = 1.5,
           alpha = 0.8,
           stroke = 1
         )
@@ -1816,7 +1814,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 22,
           fill = color,
-          size = 2.8,
+          size = 1.5,
           alpha = 0.8,
           stroke = 1
         )
@@ -1852,7 +1850,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 21,
           fill = color,
-          size = 2,
+          size = 1.5,
           alpha = 0.9,
           stroke = 1
         )
@@ -1880,7 +1878,7 @@ TeamPressPlot_OPTA <- function(
           ),
           shape = 21,
           fill = color,
-          size = 2,
+          size = 1.5,
           alpha = 0.9,
           stroke = 1
         )
@@ -1903,8 +1901,8 @@ TeamPressPlot_OPTA <- function(
     
     theme(
       plot.background = element_rect(
-        fill = "#DBDBDB",
-        colour = NA
+        colour = "snow", 
+        fill = "snow"
       ),
       panel.background = element_blank(),
       strip.background = element_rect(
@@ -1913,27 +1911,22 @@ TeamPressPlot_OPTA <- function(
       ),
       strip.text = element_text(
         colour = "black",
-        size = 8
+        size = 4
       ),
       plot.title = element_text(
         colour = "black",
-        size = 10,
+        size = 6,
         face = "bold"
       ),
       plot.subtitle = element_text(
         colour = "black",
-        size = 8
+        size = 4
       ),
       plot.caption = element_markdown(),
-      axis.title.x = element_text(
-        colour = "black",
-        size = 8,
-        face = "bold"
-      ),
+      axis.title.x = element_blank(),
       legend.position = "none"
     )
 
-  
   # ==========================================================
   # OPTIONAL LOGO
   # ==========================================================
@@ -15892,6 +15885,1503 @@ AwaytouchPlot2half <- TouchTeamPlot_OPTA(AwayPPDAHeatMapData,  title = paste0(Ma
                                      subtitle = paste0(Match_Fixture, " 2nd Half"))
 AwaytouchPlot2half
 
+
+```
+# Pressing Analysis
+``` {r}
+#| label: pressing data calculations
+#| output: none
+
+library(zoo)
+library(paletteer)
+library(RColorBrewer)
+
+#load in data if needed
+
+PlayerLogos <- MD_lineups
+
+PlayerLogos_home <- PlayerLogos %>%
+  filter(Team == Match_Home)
+
+PlayerLogos_away <- PlayerLogos %>%
+  filter(Team == Match_Away)
+
+fileNamePress <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/AI Pressing/Season 2627/", Match_Fixture, "_AI_Pressing.xlsx")
+
+
+AIMatchday <- read_excel(fileNamePress)
+
+pressdataAI <- AIMatchday
+
+pressdataAI_home <- pressdataAI %>%
+  filter(`Pressing Team` == Match_Home
+         #, Confidence == "Low"
+         )
+
+pressdataAI_Away <- pressdataAI %>%
+  filter(`Pressing Team` == Match_Away
+         #, Confidence == "Low"
+         )
+
+Cube_Possession <- HomePossession^(1/3)
+Cube_Oppo_Possession <- AwayPossession^(1/3)
+
+# Home data calculation  
+
+TouchDataAITable_home <- pressdataAI_home %>%
+  group_by(playerId, Position) %>%
+  summarise(
+    `Total Presses` = sum(Presses, na.rm = TRUE),
+    `Pushed Opponent Back` = sum(Pushed_Opponent_Back, na.rm = TRUE),
+    `Won Possession` = sum(Won_Possession, na.rm = TRUE),
+    `Put Ball Out of Play` = sum(Put_Ball_Out_of_Play, na.rm = TRUE),
+    `Direct Possession Win` = sum(Direct_Possession_Win, na.rm = TRUE),
+    `Group Press` = sum(Group_Press, na.rm = TRUE),
+    `Counter Attack` = sum(Counter_Attack, na.rm = TRUE),
+    `Counter Press` = sum(Counter_Press, na.rm = TRUE),
+    `Led to Shot` = sum(`Led to Shot`, na.rm = TRUE),
+    `Led to Goal` = sum(`Led to Goal`, na.rm = TRUE),
+    Turnover = sum(Turnover, na.rm = TRUE),
+    `Conceded Cross` = sum(Conceeded_Cross, na.rm = TRUE),
+    `Conceded Free Kick` = sum(Conceeded_Free_Kick, na.rm = TRUE),
+    `Conceded Shot` = sum(Conceeded_Shot, na.rm = TRUE),
+    `Failed Press` = sum(Failed_Press, na.rm = TRUE),
+    `Successful Presses` = sum(Successful_Presses, na.rm = TRUE),
+    `High Value Presses` = sum(`High Value Presses`, na.rm = TRUE),
+    
+    `Solo Press` = `Total Presses` - `Group Press`,
+    
+    `Total Failed Presses` =
+      `Conceded Cross` +
+      `Conceded Free Kick` +
+      `Conceded Shot` +
+      `Failed Press`,
+    
+    `Total Successful Presses` =
+      `Total Presses` - `Total Failed Presses`,
+    
+    Net =
+      `Total Successful Presses` - `Total Failed Presses`,
+    
+    `Press Efficiency` = round(
+      (`Total Successful Presses` / `Total Presses`) * 100,
+      1
+    ),
+    
+    `PAdj Presses` = round(
+      `Total Presses` *
+        first(Cube_Possession) /
+        first(Cube_Oppo_Possession),
+      1
+    ),
+    
+    Player = first(playerId),
+    'Mins Played' = first(minutes_played),
+    .groups = "drop"
+  ) %>%
+  select(full_name = Player, Position, 'Mins Played', 'Total Presses', 'PAdj Presses', 'Total Successful Presses', 'Total Failed Presses', Net, 'Press Efficiency', 'Solo Press', 'Group Press', 'Pushed Opponent Back', 'Direct Possession Win', 'Counter Attack', 'Counter Press', 'Won Possession', 'Led to Shot', 'Led to Goal', 'High Value Presses', `Conceded Cross`, `Conceded Shot`, `Conceded Free Kick`, `Failed Press`)
+
+PressTargets_home <- pressdataAI_home %>% 
+  select(Player = playerId, Target = `Opponent Name`, Presses, `Successful Presses` = Successful_Presses, `Failed Presses` = Failed_Press, `Led to Goal`, `Led to Shot`, `Won_Possession`, `High Value Presses`) %>% 
+  group_by(Player, Target) %>% 
+  summarise_all(sum, na.rm = TRUE) %>%
+  na.omit() %>%
+  arrange(desc(Presses))
+
+PressTargetTableData_home <- pressdataAI_home %>% 
+  distinct(`Game Time`, .keep_all = TRUE) %>%
+  select(Target = `Opponent Name`, Presses, Successful_Presses, Conceeded_Cross, Conceeded_Shot, Conceeded_Free_Kick, Failed_Press, Group_Press, `Led to Goal`, `Led to Shot`, `Won_Possession`, `High Value Presses`) %>% 
+  mutate("Number Targets" = Presses,
+         "Targeted by Groups" = Group_Press,
+         "Targetted Possession Win" = `Won_Possession`,
+         "Targetted High Value Win" = `High Value Presses`) %>%
+  group_by(Target) %>% 
+  summarise_all(sum, na.rm = TRUE) %>%
+  na.omit() %>%
+  mutate(`Target Fails` = (Conceeded_Cross + Conceeded_Free_Kick + Conceeded_Shot + Failed_Press),
+         `Target Success` = (`Number Targets` - `Target Fails`),
+         `Target High Value Rate` = (`Targetted High Value Win` / `Number Targets`),
+         `Target Efficiency` = (`Target Success` / `Number Targets`), 
+         `Target Led to Goal or Shot` = (`Led to Goal` + `Led to Shot`)) %>%
+  arrange(desc(`Number Targets`)) %>%
+  select(Target, `Number Targets`, `Target Success`, `Target Fails`, `Targeted by Groups`, `Target Led to Goal or Shot`, `Targetted Possession Win`, `Targetted High Value Win`, `Target High Value Rate`, `Target Efficiency`)
+
+PlayerPressPos_home <- pressdataAI_home %>%
+  mutate("Shirt" = `Player Number`) %>%
+  group_by(playerId) %>%
+  mutate(averageX = mean(x, na.rm = TRUE), 
+         averageY = mean(y, na.rm = TRUE)) %>%
+  mutate("Player" = playerId) %>%
+  select(Player, Shirt, averageX, averageY) %>%
+  distinct(Player, Shirt, averageX,averageY)
+
+PressNetworkData_home <- pressdataAI_home %>%
+  mutate("Player" = playerId)
+
+#create summary data and add average positions - need to check this TouchDataAITable_home
+PressnetworkSummaryData_home <- TouchDataAITable_home %>%
+  mutate("Player" = full_name) %>%
+  select(Player, `Press Efficiency`) %>%
+  left_join(PlayerPressPos_home, by = c("Player" = "Player"), copy = TRUE) %>%
+  left_join(PlayerLogos_home, by = c("Player" = "Player"), copy = TRUE)
+
+#this is the point it breaks need to fix this
+PressNetworkData_home <- PressNetworkData_home %>%
+  left_join(PressnetworkSummaryData_home, by = c("Player" = "Player"), copy = TRUE) %>%
+  mutate(`Mins Played` = as.numeric(minutes_played),)
+
+  Press_Data_home <- pressdataAI_home %>%
+    group_by(minute) %>%
+  summarize_if(is.numeric, sum) %>%
+    select(minute, Presses)
+  
+  GoalMin <- plottingData 
+  
+  GoalMin_Home <- GoalMin %>%
+    filter(TeamName == Match_Home) %>%
+    mutate(Goal_point = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
+    mutate(Goal_point = as.numeric(Goal_point)) %>%
+    mutate(Goal_point_min = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
+    select(minute, Goal_point, Goal_point_min)
+  
+  PAPA_Data_home <- plottingData %>%
+ #why is this here only collect pressing for mid and final zone so this removed defensive zone
+    filter(x <= 76)
+  
+  PAPA_Data_home <- PAPA_Data_home %>%
+    select(minute, Home_Passes, Away_Passes, Home_Successful_Passes, Away_Successful_Passes, Home_Possession, Away_Possession) %>%
+    group_by(minute) %>%
+    summarize(
+      Away_Passes = sum(Away_Passes),
+      Home_Passes = sum(Home_Passes),
+      Away_Successful_Passes = sum(Away_Successful_Passes),
+      Home_Successful_Passes = sum(Home_Successful_Passes),
+      Home_Possession = mean(Home_Possession),
+      Away_Possession = mean(Away_Possession))
+  
+
+  PAPA_Data_home <- PAPA_Data_home %>%
+    left_join(Press_Data_home, by = c("minute" = "minute"), copy = TRUE) %>%
+      replace_na(list(Presses = 0))
+
+  PAPA_Data_home <- PAPA_Data_home %>%
+    mutate(Cube_Possession = Home_Possession^(1/3),
+           Cube_Away_Possession = Away_Possession^(1/3),
+           PAPA = (Presses*Cube_Away_Possession)/Cube_Possession,
+           OPPP = (Away_Passes/Presses),
+           OPPP = round(OPPP,2),
+           PAPA = round(PAPA,2)) %>%
+    replace_na(list(PAPA = 0)) %>%
+    replace_na(list(OPPP = 0)) %>%
+    mutate(Rolling_PAPA = rollmean(PAPA, k = 10, fill = NA),
+           Rolling_OPPP = rollmean(OPPP, k = 10, fill = NA)) %>%
+    replace_na(list(Rolling_PAPA = 0)) %>%
+    replace_na(list(Rolling_OPPP = 0)) %>%
+    mutate(across(.cols = everything(), ~ ifelse(is.infinite(.x), 0, .x)))
+  
+  PAPA_Data_home <- PAPA_Data_home %>%
+    mutate(PAPA_percentile_rank = ecdf(PAPA_Data_home$OPPP)(PAPA) * 100,
+           OPPP_percentile_rank = ecdf(PAPA_Data_home$OPPP)(OPPP) * 100,
+           PAPA_Roll_percentile_rank = ecdf(PAPA_Data_home$Rolling_PAPA)(Rolling_PAPA) * 100,
+           OPPP_Roll_percentile_rank = ecdf(PAPA_Data_home$Rolling_OPPP)(Rolling_OPPP) * 100)
+
+  PAPA_Data_home <- PAPA_Data_home %>%
+    mutate(PAPA_Overall_Percentile = (PAPA_percentile_rank + OPPP_percentile_rank)/2,
+           PAPA_Overall_Percentile = round(PAPA_Overall_Percentile,2)) %>%
+    mutate(PAPA_Overall_Percentile_Roll = (PAPA_Roll_percentile_rank + OPPP_Roll_percentile_rank)/2,
+           PAPA_Overall_Percentile_Roll = round(PAPA_Overall_Percentile_Roll, 2)) %>%
+    mutate(PAPA_Overall_Roll = rollmean(PAPA_Overall_Percentile, k = 5, fill = NA),
+           PAPA_Overall_Roll = round(PAPA_Overall_Roll, 2)) %>%
+             replace_na(list(PAPA_Overall_Roll = 0))
+ 
+  PAPA_Data_home <- PAPA_Data_home %>%
+    left_join(GoalMin_Home, by = c("minute" = "minute"), copy = TRUE)
+  
+
+  PAPAQ <- quantile(PAPA_Data_home$PAPA, probs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9, 1), na.rm = TRUE)
+  OPPP <- quantile(PAPA_Data_home$OPPP, probs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9, 1), na.rm = TRUE)
+
+  #Prepare plot backgounrd  
+  make_gradient <- function(deg = 90, n = 100, cols = blues9) {
+    cols <- colorRampPalette(cols)(n + 1)
+    rad <- deg / (180 / pi)
+    mat <- matrix(
+      data = rep(seq(0, 1, length.out = n) * cos(rad), n),
+      byrow = TRUE,
+      ncol = n
+    ) +
+      matrix(
+        data = rep(seq(0, 1, length.out = n) * sin(rad), n),
+        byrow = FALSE,
+        ncol = n
+      )
+    mat <- mat - min(mat)
+    mat <- mat / max(mat)
+    mat <- 1 + mat * n
+    mat <- matrix(data = cols[round(mat)], ncol = n)
+    grid::rasterGrob(
+      image = mat,
+      width = unit(1, "npc"),
+      height = unit(1, "npc"), 
+      interpolate = TRUE
+    )
+  }
+  
+  #set background colours 
+  g <- make_gradient(
+    deg = 90, n = 100, cols = brewer.pal(9, "RdBu"))
+  
+  
+# Away data calculation  
+  
+    TouchDataAITable_away <- pressdataAI_Away %>%
+    group_by(playerId, Position) %>%
+    summarise(
+      `Total Presses` = sum(Presses, na.rm = TRUE),
+      `Pushed Opponent Back` = sum(Pushed_Opponent_Back, na.rm = TRUE),
+      `Won Possession` = sum(Won_Possession, na.rm = TRUE),
+      `Put Ball Out of Play` = sum(Put_Ball_Out_of_Play, na.rm = TRUE),
+      `Direct Possession Win` = sum(Direct_Possession_Win, na.rm = TRUE),
+      `Group Press` = sum(Group_Press, na.rm = TRUE),
+      `Counter Attack` = sum(Counter_Attack, na.rm = TRUE),
+      `Counter Press` = sum(Counter_Press, na.rm = TRUE),
+      `Led to Shot` = sum(`Led to Shot`, na.rm = TRUE),
+      `Led to Goal` = sum(`Led to Goal`, na.rm = TRUE),
+      Turnover = sum(Turnover, na.rm = TRUE),
+      `Conceded Cross` = sum(Conceeded_Cross, na.rm = TRUE),
+      `Conceded Free Kick` = sum(Conceeded_Free_Kick, na.rm = TRUE),
+      `Conceded Shot` = sum(Conceeded_Shot, na.rm = TRUE),
+      `Failed Press` = sum(Failed_Press, na.rm = TRUE),
+      `Successful Presses` = sum(Successful_Presses, na.rm = TRUE),
+      `High Value Presses` = sum(`High Value Presses`, na.rm = TRUE),
+      
+      `Solo Press` = `Total Presses` - `Group Press`,
+      
+      `Total Failed Presses` =
+        `Conceded Cross` +
+        `Conceded Free Kick` +
+        `Conceded Shot` +
+        `Failed Press`,
+      
+      `Total Successful Presses` =
+        `Total Presses` - `Total Failed Presses`,
+      
+      Net =
+        `Total Successful Presses` - `Total Failed Presses`,
+      
+      `Press Efficiency` = round(
+        (`Total Successful Presses` / `Total Presses`) * 100,
+        1
+      ),
+      
+      `PAdj Presses` = round(
+        `Total Presses` *
+          first(Cube_Oppo_Possession) /
+          first(Cube_Possession),
+        1
+      ),
+      
+      Player = first(playerId),
+      'Mins Played' = first(minutes_played),
+      .groups = "drop"
+    ) %>%
+    select(full_name = Player, Position, 'Mins Played', 'Total Presses', 'PAdj Presses', 'Total Successful Presses', 'Total Failed Presses', Net, 'Press Efficiency', 'Solo Press', 'Group Press', 'Pushed Opponent Back', 'Direct Possession Win', 'Counter Attack', 'Counter Press', 'Won Possession', 'Led to Shot', 'Led to Goal', 'High Value Presses', `Conceded Cross`, `Conceded Shot`, `Conceded Free Kick`, `Failed Press`)
+    
+  PressTargets_away <- pressdataAI_Away %>% 
+    select(Player = playerId, Target = `Opponent Name`, Presses, `Successful Presses` = Successful_Presses, `Failed Presses` = Failed_Press, `Led to Goal`, `Led to Shot`, `Won_Possession`, `High Value Presses`) %>% 
+    group_by(Player, Target) %>% 
+    summarise_all(sum, na.rm = TRUE) %>%
+    na.omit() %>%
+    arrange(desc(Presses))
+  
+  PressTargetTableData_away <- pressdataAI_Away %>% 
+    distinct(`Game Time`, .keep_all = TRUE) %>%
+    select(Target = `Opponent Name`, Presses, Successful_Presses, Conceeded_Cross, Conceeded_Shot, Conceeded_Free_Kick, Failed_Press, Group_Press, `Led to Goal`, `Led to Shot`, `Won_Possession`, `High Value Presses`) %>% 
+    mutate("Number Targets" = Presses,
+           "Targeted by Groups" = Group_Press,
+           "Targetted Possession Win" = `Won_Possession`,
+           "Targetted High Value Win" = `High Value Presses`) %>%
+    group_by(Target) %>% 
+    summarise_all(sum, na.rm = TRUE) %>%
+    na.omit() %>%
+    mutate(`Target Fails` = (Conceeded_Cross + Conceeded_Free_Kick + Conceeded_Shot + Failed_Press),
+           `Target Success` = (`Number Targets` - `Target Fails`),
+           `Target High Value Rate` = (`Targetted High Value Win` / `Number Targets`),
+           `Target Efficiency` = (`Target Success` / `Number Targets`), 
+           `Target Led to Goal or Shot` = (`Led to Goal` + `Led to Shot`)) %>%
+    arrange(desc(`Number Targets`)) %>%
+    select(Target, `Number Targets`, `Target Success`, `Target Fails`, `Targeted by Groups`, `Target Led to Goal or Shot`, `Targetted Possession Win`, `Targetted High Value Win`, `Target High Value Rate`, `Target Efficiency`)
+  
+    PlayerPressPos_away <- pressdataAI_Away %>%
+    mutate("Shirt" = `Player Number`) %>%
+    group_by(playerId) %>%
+    mutate(averageX = mean(x, na.rm = TRUE), 
+           averageY = mean(y, na.rm = TRUE)) %>%
+    mutate("Player" = playerId) %>%
+    select(Player, Shirt, averageX, averageY) %>%
+    distinct(Player, Shirt, averageX,averageY)
+  
+  PressNetworkData_away <- pressdataAI_Away %>%
+    mutate("Player" = playerId)
+  
+  #create summary data and add average positions - need to check this
+  PressnetworkSummaryData_away <- TouchDataAITable_away %>%
+    mutate("Player" = full_name) %>%
+    select(Player, `Press Efficiency`) %>%
+    left_join(PlayerPressPos_away, by = c("Player" = "Player"), copy = TRUE) %>%
+    left_join(PlayerLogos_away, by = c("Player" = "Player"), copy = TRUE)
+  
+  #this is the point it breaks need to fix this
+  PressNetworkData_away <- PressNetworkData_away %>%
+    left_join(PressnetworkSummaryData_away, by = c("Player" = "Player"), copy = TRUE) %>%
+    mutate(`Mins Played` = as.numeric(minutes_played),)
+  
+  Press_Data_away <- pressdataAI_Away %>%
+    group_by(minute) %>%
+    summarize_if(is.numeric, sum) %>%
+    select(minute, Presses)
+  
+  GoalMin <- plottingData 
+  
+  GoalMin_Away <- GoalMin %>%
+    filter(TeamName == Match_Away) %>%
+    mutate(Goal_point = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
+    mutate(Goal_point = as.numeric(Goal_point)) %>%
+    mutate(Goal_point_min = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
+    select(minute, Goal_point, Goal_point_min)
+  
+  PAPA_Data_away <- plottingData %>%
+  #why is this here only collect pressing for mid and final zone so this removed defensive zone
+  #PAPA_Data <- PAPA_Data %>%
+    filter(x <= 76)
+  
+  PAPA_Data_away <- PAPA_Data_away %>%
+    select(minute, Home_Passes, Away_Passes, Home_Successful_Passes, Away_Successful_Passes, Home_Possession, Away_Possession) %>%
+    group_by(minute) %>%
+    summarize(
+      Away_Passes = sum(Away_Passes),
+      Home_Passes = sum(Home_Passes),
+      Away_Successful_Passes = sum(Away_Successful_Passes),
+      Home_Successful_Passes = sum(Home_Successful_Passes),
+      Home_Possession = mean(Home_Possession),
+      Away_Possession = mean(Away_Possession))
+  
+  
+  PAPA_Data_away <- PAPA_Data_away %>%
+    left_join(Press_Data_away, by = c("minute" = "minute"), copy = TRUE) %>%
+    replace_na(list(Presses = 0))
+  
+  PAPA_Data_away <- PAPA_Data_away %>%
+    mutate(Cube_Possession = Away_Possession^(1/3),
+           Cube_Away_Possession = Home_Possession^(1/3),
+           PAPA = (Presses*Cube_Away_Possession)/Cube_Possession,
+           OPPP = (Away_Passes/Presses),
+           OPPP = round(OPPP,2),
+           PAPA = round(PAPA,2)) %>%
+    replace_na(list(PAPA = 0)) %>%
+    replace_na(list(OPPP = 0)) %>%
+    mutate(Rolling_PAPA = rollmean(PAPA, k = 10, fill = NA),
+           Rolling_OPPP = rollmean(OPPP, k = 10, fill = NA)) %>%
+    replace_na(list(Rolling_PAPA = 0)) %>%
+    replace_na(list(Rolling_OPPP = 0)) %>%
+    mutate(across(.cols = everything(), ~ ifelse(is.infinite(.x), 0, .x)))
+  
+  PAPA_Data_away <- PAPA_Data_away %>%
+    mutate(PAPA_percentile_rank = ecdf(PAPA_Data_away$OPPP)(PAPA) * 100,
+           OPPP_percentile_rank = ecdf(PAPA_Data_away$OPPP)(OPPP) * 100,
+           PAPA_Roll_percentile_rank = ecdf(PAPA_Data_away$Rolling_PAPA)(Rolling_PAPA) * 100,
+           OPPP_Roll_percentile_rank = ecdf(PAPA_Data_away$Rolling_OPPP)(Rolling_OPPP) * 100)
+  
+  PAPA_Data_away <- PAPA_Data_away %>%
+    mutate(PAPA_Overall_Percentile = (PAPA_percentile_rank + OPPP_percentile_rank)/2,
+           PAPA_Overall_Percentile = round(PAPA_Overall_Percentile,2)) %>%
+    mutate(PAPA_Overall_Percentile_Roll = (PAPA_Roll_percentile_rank + OPPP_Roll_percentile_rank)/2,
+           PAPA_Overall_Percentile_Roll = round(PAPA_Overall_Percentile_Roll, 2)) %>%
+    mutate(PAPA_Overall_Roll = rollmean(PAPA_Overall_Percentile, k = 5, fill = NA),
+           PAPA_Overall_Roll = round(PAPA_Overall_Roll, 2)) %>%
+    replace_na(list(PAPA_Overall_Roll = 0))
+  
+  PAPA_Data_away <- PAPA_Data_away %>%
+    left_join(GoalMin_Away, by = c("minute" = "minute"), copy = TRUE)
+  
+  
+  PAPAQ <- quantile(PAPA_Data_away$PAPA, probs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9, 1), na.rm = TRUE)
+  OPPP <- quantile(PAPA_Data_away$OPPP, probs = c(.1, .2, .3, .4, .5, .6, .7, .8, .9, 1), na.rm = TRUE)
+  
+  #Prepare plot backgounrd  
+  make_gradient <- function(deg = 90, n = 100, cols = blues9) {
+    cols <- colorRampPalette(cols)(n + 1)
+    rad <- deg / (180 / pi)
+    mat <- matrix(
+      data = rep(seq(0, 1, length.out = n) * cos(rad), n),
+      byrow = TRUE,
+      ncol = n
+    ) +
+      matrix(
+        data = rep(seq(0, 1, length.out = n) * sin(rad), n),
+        byrow = FALSE,
+        ncol = n
+      )
+    mat <- mat - min(mat)
+    mat <- mat / max(mat)
+    mat <- 1 + mat * n
+    mat <- matrix(data = cols[round(mat)], ncol = n)
+    grid::rasterGrob(
+      image = mat,
+      width = unit(1, "npc"),
+      height = unit(1, "npc"), 
+      interpolate = TRUE
+    )
+  }
+  
+  #set background colours 
+  g <- make_gradient(
+    deg = 90, n = 100, cols = brewer.pal(9, "RdBu"))
+  
+  
+
+```
+## Press Zones {.flow}
+### Home {.tabset}
+``` {r}
+#| title: Home Press Zone 1st Sub
+#| label: Home Press Zone 1st Sub
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+Home_PressPlot1S <- TeamPressPlot_OPTA(pressdataAI_home,  title = paste0(Match_Home, " & All positive events "),
+                                   plot_start = 00, plot_finish = firstSubHome,
+                                   subtitle = paste0(Match_Fixture, " - up to 1st subs"),
+                                  Fail = "", CPress = "Yes", CAttack = "Yes", Turnover = "Yes", GPress = "Yes", PShot = "Yes", DPoss = "Yes", method = "mad", color = Color_Home)
+
+Home_PressPlot1S
+
+```
+``` {r}
+#| title: Home Press Zone 1st Half
+#| label: Home Press Zone 1st Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+Home_PressPlot1H <- TeamPressPlot_OPTA(pressdataAI_home,  title = paste0(Match_Home, " & All positive events "),
+                                   plot_start = 00, plot_finish = 44,
+                                   subtitle = paste0(Match_Fixture, " - 1st Half"),
+                                   Fail = "", CPress = "Yes", CAttack = "Yes", Turnover = "Yes", GPress = "Yes", PShot = "Yes", DPoss = "Yes", method = "mad", color = Color_Home)
+
+Home_PressPlot1H
+
+```
+``` {r}
+#| title: Home Press Zone 2nd Half
+#| label: Home Press Zone 2nd Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+Home_PressPlot2H <- TeamPressPlot_OPTA(pressdataAI_home,  title = paste0(Match_Home, " & All positive events "),
+                                   plot_start = 45, plot_finish = 100,
+                                   subtitle = paste0(Match_Fixture, " - 2nd Half"),
+                                   Fail = "", CPress = "Yes", CAttack = "Yes", Turnover = "Yes", GPress = "Yes", PShot = "Yes", DPoss = "Yes", method = "mad", color = Color_Home)
+
+Home_PressPlot2H
+
+```
+
+### Away {.tabset}
+``` {r}
+#| title: Away Press Zone 1st Sub
+#| label: Away Press Zone 1st Sub
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  away_PressPlot1S <- TeamPressPlot_OPTA(pressdataAI_Away,  title = paste0(Match_Away, " & All positive events "),
+                                         plot_start = 00, plot_finish = firstSubAway,
+                                         subtitle = paste0(Match_Fixture, " - up to 1st subs"),
+                                         Fail = "", CPress = "Yes", CAttack = "Yes", Turnover = "Yes", GPress = "Yes", PShot = "Yes", DPoss = "Yes", method = "mad", color = Color_Away)
+  
+  away_PressPlot1S
+
+```
+``` {r}
+#| title: Away Press Zone 1st Half
+#| label: Away Press Zone 1st Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  away_PressPlot1H <- TeamPressPlot_OPTA(pressdataAI_Away,  title = paste0(Match_Away, " & All positive events "),
+                                         plot_start = 00, plot_finish = 44,
+                                         subtitle = paste0(Match_Fixture, " - 1st Half"),
+                                         Fail = "", CPress = "Yes", CAttack = "Yes", Turnover = "Yes", GPress = "Yes", PShot = "Yes", DPoss = "Yes", method = "mad", color = Color_Away)
+  
+  away_PressPlot1H
+
+```
+``` {r}
+#| title: Away Press Zone 2nd Half
+#| label: Away Press Zone 2nd Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  away_PressPlot2H <- TeamPressPlot_OPTA(pressdataAI_Away,  title = paste0(Match_Away, " & All positive events "),
+                                         plot_start = 45, plot_finish = 100,
+                                         subtitle = paste0(Match_Fixture, " - 2nd Half"),
+                                         Fail = "", CPress = "Yes", CAttack = "Yes", Turnover = "Yes", GPress = "Yes", PShot = "Yes", DPoss = "Yes", method = "mad", color = Color_Away)
+  
+  away_PressPlot2H
+
+```
+
+
+## Press Fails {.flow}
+### Home {.tabset}
+``` {r}
+#| title: Home Press Fails 1st Half
+#| label: Home Press Fails 1st Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+Home_PressPlot1HFails <- TeamPressPlot_OPTA(pressdataAI_home,   title = paste0(Match_Home, " & Fails"),
+                                        plot_start = 00, plot_finish = 44,
+                                        subtitle = paste0(Match_Fixture, "- 1st Half"),
+                                         Fail = "Yes", CPress = "", CAttack = "", Turnover = "", GPress = "", PShot = "", DPoss = "", method = "mad", color = Color_Home)
+
+Home_PressPlot1HFails
+
+```
+``` {r}
+#| title: Home Press Fails 2nd Half
+#| label: Home Press Fails 2nd Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+Home_PressPlot2HFails <- TeamPressPlot_OPTA(pressdataAI_home,   title = paste0(Match_Home, " & Fails"),
+                                        plot_start = 45, plot_finish = 100,
+                                        subtitle = paste0(Match_Fixture, " - 2nd Half"),
+                                         Fail = "Yes", CPress = "", CAttack = "", Turnover = "", GPress = "", PShot = "", DPoss = "", method = "mad", color = Color_Home)
+
+Home_PressPlot2HFails
+
+```
+``` {r}
+#| title: Home Press Fails 1st Sub
+#| label: Home Press Fails 1st Sub
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+Home_PressPlot1SFails <- TeamPressPlot_OPTA(pressdataAI_home,  title = paste0(Match_Home, " & Fails"),
+                                        plot_start = 00, plot_finish = firstSubHome,
+                                        subtitle = paste0(Match_Fixture, " - up to 1st subs"),
+                                         Fail = "Yes", CPress = "", CAttack = "", Turnover = "", GPress = "", PShot = "", DPoss = "", method = "mad", color = Color_Home)
+
+Home_PressPlot1SFails
+
+```
+### Away {.tabset}
+``` {r}
+#| title: Away Press Fails 1st Half
+#| label: Away Press Fails 1st Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  away_PressPlot1HFails <- TeamPressPlot_OPTA(pressdataAI_Away,  title = paste0(Match_Away, " & Fails"),
+                                              plot_start = 00, plot_finish = 44,
+                                              subtitle = paste0(Match_Fixture, " - 1st Half"),
+                                              Fail = "Yes", CPress = "", CAttack = "", Turnover = "", GPress = "", PShot = "", DPoss = "", method = "mad", color = Color_Away)
+  
+  away_PressPlot1HFails
+
+```
+``` {r}
+#| title: Away Press Fails 2nd Half
+#| label: Away Press Fails 2nd Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  away_PressPlot2HFails <- TeamPressPlot_OPTA(pressdataAI_Away,  title = paste0(Match_Away, " & Fails"),
+                                              plot_start = 45, plot_finish = 100,
+                                              subtitle = paste0(Match_Fixture, " - 2nd Half"),
+                                              Fail = "Yes", CPress = "", CAttack = "", Turnover = "", GPress = "", PShot = "", DPoss = "", method = "mad", color = Color_Away)
+  
+  away_PressPlot2HFails
+
+```
+``` {r}
+#| title: Away Press Fails 1st Sub
+#| label: Away Press Fails 1st Sub
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  away_PressPlot1SFails <- TeamPressPlot_OPTA(pressdataAI_Away,  title = paste0(Match_Away, " & Fails"),
+                                              plot_start = 00, plot_finish = firstSubAway,
+                                              subtitle = paste0(Match_Fixture, " - up to 1st subs"),
+                                              Fail = "Yes", CPress = "", CAttack = "", Turnover = "", GPress = "", PShot = "", DPoss = "", method = "mad", color = Color_Away)
+  
+  away_PressPlot1SFails
+
+```
+
+## Press Heat Maps {.flow}
+### Home {.tabset}
+``` {r}
+#| label: Home Press Heat Map FT
+#| title: Full Time
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+PressHeatMapFT_home <- pressdataAI_home %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+  theme_pitch() +
+  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  
+  # add zone numbers
+  geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+  
+  #geometrics
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.3) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Home, " Press Heat Map - FT"), 
+       subtitle = paste0(Match_Fixture,"  \nDirection of play Left to Right, Darker colour = Higher Press"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+#call plot
+PressHeatMapFT_home
+
+```
+``` {r}
+#| label: Home Press Heat Map 1st
+#| title: First Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+PressHeatMap1st_home <- pressdataAI_home  %>%
+    filter(Period == "FirstHalf") %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+  theme_pitch() +
+  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  
+  # add zone numbers
+  geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+  
+  #geometrics
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.3) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Home, " Press Heat Map - 1st Half"), 
+       subtitle = paste0(Match_Fixture,"  \nDirection of play Left to Right, Darker colour = Higher Press"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+#call plot
+PressHeatMap1st_home
+
+```
+``` {r}
+#| label: Home Press Heat Map 2nd
+#| title: Second Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+PressHeatMap2nd_home <- pressdataAI_home  %>%
+    filter(Period == "SecondHalf") %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+  theme_pitch() +
+  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  
+  # add zone numbers
+  geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+  
+  #geometrics
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.3) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Home, " Press Heat Map - 2nd Half"), 
+       subtitle = paste0(Match_Fixture,"  \nDirection of play Left to Right, Darker colour = Higher Press"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+#call plot
+PressHeatMap2nd_home
+
+```
+### Away {.tabset}
+``` {r}
+#| label: Away Press Heat Map FT
+#| title: Full Time
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  PressHeatMapFT_away <- pressdataAI_Away %>%
+    ggplot(aes(x = x, y = y)) +
+    annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+    theme_pitch() +
+    annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+    annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+    
+    # add zone numbers
+    geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+    geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+    geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+    
+    #geometrics
+    stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.3) +
+    
+    #set scales
+    scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+    scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+    
+    #formatting
+    labs(title = paste0(Match_Away, " Press Heat Map - FT"), 
+         subtitle = paste0(Match_Fixture,"  \nDirection of play Left to Right, Darker colour = Higher Press"),
+         caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+  
+  #call plot
+  PressHeatMapFT_away
+
+```
+``` {r}
+#| label: Away Press Heat Map 1st
+#| title: First Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+  PressHeatMap1st_away <- pressdataAI_Away %>%
+    filter(Period == "FirstHalf") %>%
+    ggplot(aes(x = x, y = y)) +
+    annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+    theme_pitch() +
+    annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+    annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+    
+    # add zone numbers
+    geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+    geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+    geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+    
+    #geometrics
+    stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.3) +
+    
+    #set scales
+    scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+    scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+    
+    #formatting
+    labs(title = paste0(Match_Away, " Press Heat Map - 1st Half"), 
+         subtitle = paste0(Match_Fixture,"  \nDirection of play Left to Right, Darker colour = Higher Press"),
+         caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+  
+  #call plot
+  PressHeatMap1st_away
+
+
+```
+``` {r}
+#| label: Away Press Heat Map 2nd
+#| title: Second Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  PressHeatMap2nd_away <- pressdataAI_Away %>%
+    filter(Period == "SecondHalf") %>%
+    ggplot(aes(x = x, y = y)) +
+    annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+    theme_pitch() +
+    annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+    annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+    
+    # add zone numbers
+    geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+    geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+    geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+    
+    #geometrics
+    stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.3) +
+    
+    #set scales
+    scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+    scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+    
+    #formatting
+    labs(title = paste0(Match_Away, " Press Heat Map - 2nd Half"), 
+         subtitle = paste0(Match_Fixture,"  \nDirection of play Left to Right, Darker colour = Higher Press"),
+         caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+  
+  #call plot
+  PressHeatMap2nd_away
+
+```
+## Home Pressing Stats
+```{r}
+#| label: Home Pressing Stats
+#| title: Home Pressing Stats
+#| results: asis
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+AIPressTable_home <- TouchDataAITable_home %>% 
+  gt(rowname_col = "full_name", groupname_col = "Position") %>%
+  cols_align(align = "right", columns = everything()) %>%
+  tab_spanner(label = "Summary", columns = c('Total Presses', 'PAdj Presses', 'Total Successful Presses', 'Total Failed Presses', Net, 'Press Efficiency', 'Solo Press', 'Group Press')) %>%
+  tab_spanner(label = "Positive Actions", columns = c('Pushed Opponent Back', 'Direct Possession Win', 'Counter Attack', 'Counter Press', 'Won Possession', 'Led to Shot', 'Led to Goal', `High Value Presses`)) %>%
+  tab_spanner(label = "Negative Actions", columns = c(`Conceded Cross`, `Conceded Shot`, `Conceded Free Kick`, `Failed Press`)) %>%
+  tab_header(
+    title = md("Liverpool Individual Player Pressing Stats"),
+    subtitle = paste0(Match_Fixture)) %>%
+    tab_source_note(md(My_caption)) %>%
+  summary_rows(columns = c(4:23), fns = list("Unit Mean" = ~ mean (., na.rm=TRUE)), fmt = list(~fmt_number(., decimals = 1))) %>%
+  summary_rows(groups = TRUE, fns = list("Unit Total" = ~ sum (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+  tab_options(
+    heading.padding = px(1),
+    heading.align = "left",
+    column_labels.background.color = "#E5E5E5",
+    row_group.background.color = Color_Home,
+    stub.background.color = "#E5E5E5",
+    column_labels.border.bottom.color = "black",
+    summary_row.background.color = "#E5E5E5",
+    table.font.size = 14,
+    heading.title.font.size = 16,
+    heading.subtitle.font.size = 14,
+    source_notes.font.size = 8,
+    table.width = "100%") %>%
+  tab_style(locations = cells_title(groups = "title"),style = list(cell_text(weight = "bold", size = 16))) %>%
+  gt_color_rows(c(3:3, 6:7, 9:13, 17:21),palette = ColorScale_Home)
+
+AIPressTable_home
+
+```
+## Away Pressing Stats
+```{r}
+#| label: Away Pressing Stats
+#| title: Away Pressing Stats
+#| results: asis
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  AIPressTable_away <- TouchDataAITable_away %>% 
+    gt(rowname_col = "full_name", groupname_col = "Position") %>%
+    cols_align(align = "right", columns = everything()) %>%
+    tab_spanner(label = "Summary", columns = c('Total Presses', 'PAdj Presses', 'Total Successful Presses', 'Total Failed Presses', Net, 'Press Efficiency', 'Solo Press', 'Group Press')) %>%
+    tab_spanner(label = "Positive Actions", columns = c('Pushed Opponent Back', 'Direct Possession Win', 'Counter Attack', 'Counter Press', 'Won Possession', 'Led to Shot', 'Led to Goal', `High Value Presses`)) %>%
+    tab_spanner(label = "Negative Actions", columns = c(`Conceded Cross`, `Conceded Shot`, `Conceded Free Kick`, `Failed Press`)) %>%
+    tab_header(
+      title = md("Liverpool Individual Player Pressing Stats"),
+      subtitle = paste0(Match_Fixture)) %>%
+      tab_source_note(md(My_caption)) %>%
+    summary_rows(columns = c(4:23), fns = list("Unit Mean" = ~ mean (., na.rm=TRUE)), fmt = list(~fmt_number(., decimals = 1))) %>%
+    summary_rows(groups = TRUE, fns = list("Unit Total" = ~ sum (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+    tab_options(
+      heading.padding = px(1),
+      heading.align = "left",
+      column_labels.background.color = "#E5E5E5",
+      row_group.background.color = Color_Away,
+      stub.background.color = "#E5E5E5",
+      column_labels.border.bottom.color = "black",
+      summary_row.background.color = "#E5E5E5",
+      table.font.size = 14,
+      heading.title.font.size = 16,
+      heading.subtitle.font.size = 14,
+      source_notes.font.size = 8,
+      table.width = "100%") %>%
+    tab_style(locations = cells_title(groups = "title"),style = list(cell_text(weight = "bold", size = 16))) %>%
+    gt_color_rows(c(3:3, 6:7, 9:13, 17:21),palette = ColorScale_Away)
+  
+  AIPressTable_away
+
+```
+## Press Target Plots  {.flow}
+### Home
+``` {r}
+#| title: Home Press Target Treeplot
+#| label: Home Press Target Treeplot
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+group <- PressTargets_home$Player
+subgroup <- PressTargets_home$Target
+value <- PressTargets_home$Presses
+
+#Canvas
+PressTreeMap_home <- PressTargets_home %>%
+  #geometrics
+  ggplot(aes(area = value, fill = value, subgroup = subgroup,
+             label = paste(group, value, sep = "\n"))) +
+  geom_treemap() +
+  geom_treemap_subgroup_border(colour = "white", size = 5) +
+  geom_treemap_subgroup_text(place = "centre", grow = TRUE,
+                             alpha = 0.25, colour = "black",
+                             fontface = "italic") +
+  geom_treemap_text(colour = "black",
+                    place = "centre",
+                    size = 13,
+                    grow = FALSE) +
+  #formatting
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 6),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB")) +
+
+  scale_fill_gradientn(colors = ColorScale_HomeC) +
+  #scale_fill_paletteer_c("grDevices::Reds 3", -1) + 
+  labs(title = paste0(Match_Away, " Pressing Targets"), 
+       subtitle = paste0(Match_Fixture, " Darker color = More Targets \n Number & Name = Pressing Player, \n Large Name = Opposition Pressing Target"),
+       caption = My_caption)
+
+PressTreeMap_home
+```
+### Away
+``` {r}
+#| title: Away Press Target Treeplot
+#| label: Away Press Target Treeplot
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+group <- PressTargets_away$Player
+  subgroup <- PressTargets_away$Target
+  value <- PressTargets_away$Presses
+  
+  #Canvas
+  PressTreeMap_Away <- PressTargets_away %>%
+    #geometrics
+    ggplot(aes(area = value, fill = value, subgroup = subgroup,
+               label = paste(group, value, sep = "\n"))) +
+    geom_treemap() +
+    geom_treemap_subgroup_border(colour = "white", size = 5) +
+    geom_treemap_subgroup_text(place = "centre", grow = TRUE,
+                               alpha = 0.25, colour = "black",
+                               fontface = "italic") +
+    geom_treemap_text(colour = "black",
+                      place = "centre",
+                      size = 13,
+                      grow = FALSE) +
+    #formatting
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 6),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB")) +
+    
+    scale_fill_gradientn(colors = ColorScale_AwayC) +
+    #scale_fill_paletteer_c("grDevices::Reds 3", -1) + 
+    labs(title = paste0(Match_Away, " Pressing Targets"), 
+       subtitle = paste0(Match_Fixture, " Darker color = More Targets \n Number & Name = Pressing Player, \n Large Name = Opposition Pressing Target"),
+       caption = My_caption)
+  
+  PressTreeMap_Away
+
+```
+
+## Home Press Targets {.tabset}
+```{r}
+#| label: Home Pressing Target Stats
+#| title: Home Pressing Target Stats
+#| results: asis
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+AIPressTargetTable_home <- PressTargetTableData_home %>% 
+  gt(rowname_col = "Target") %>%
+#  gt_theme_538() %>%
+  cols_align(align = "right", columns = everything()) %>%
+  fmt_percent(columns = c(`Target High Value Rate`), decimals = 0) %>%
+  fmt_percent(columns = c(`Target Efficiency`), decimals = 0) %>%
+  tab_header(
+    title = md("Pressing Targeting Stats"),
+    subtitle = paste0(Match_Fixture)) %>%
+    tab_source_note(md(My_caption)) %>%
+  #tab_source_note(md("AI Pressing Data")) %>%
+  summary_rows(groups = NULL, fns = list(Average = ~ mean (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+  summary_rows(groups = NULL, fns = list(Total = ~ sum (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+  tab_options(
+    heading.padding = px(1),
+    heading.align = "left",
+    column_labels.background.color = "#E5E5E5",
+    row_group.background.color = Color_Home,
+    stub.background.color = "#E5E5E5",
+    column_labels.border.bottom.color = "black",
+    summary_row.background.color = "#E5E5E5",
+    table.font.size = 14,
+    heading.title.font.size = 16,
+    heading.subtitle.font.size = 14,
+    source_notes.font.size = 8,
+    table.width = "100%") %>%
+  tab_style(locations = cells_title(groups = "title"),style = list(cell_text(weight = "bold", size = 16))) %>%
+#  tab_style(locations = cells_title(groups = "subtitle"),style = list(cell_text(weight = "normal", style = "italic", size = 14))) %>%
+#  gt_color_rows(c(2),palette = ColorScale_Home, domain = NULL) %>%
+  gt_color_rows(c(2, 5:7),palette = ColorScale_Home, domain = NULL)
+
+AIPressTargetTable_home
+
+```
+```{r}
+#| label: Home Pressing Target Details
+#| title: Home Pressing Target Details
+#| results: asis
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+PressTreeTable_home <- PressTargets_home %>% 
+  gt(rowname_col = "Target", groupname_col = "Player") %>%
+#  gt_theme_538() %>%
+  cols_align(align = "right", columns = everything()) %>%
+  tab_header(
+    title = md("Press Oppo Targeting Details"),
+    subtitle = paste0(Match_Fixture)) %>%
+    tab_source_note(md(My_caption)) %>%
+  #tab_source_note(md("AI Pressing Data")) %>%
+  summary_rows(groups = TRUE, fns = list(Average = ~ mean (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+  summary_rows(groups = TRUE, fns = list(Total = ~ sum (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+  tab_options(
+    heading.padding = px(1),
+    heading.align = "left",
+    column_labels.background.color = "#E5E5E5",
+    row_group.background.color = Color_Home,
+    stub.background.color = "#E5E5E5",
+    column_labels.border.bottom.color = "black",
+    summary_row.background.color = "#E5E5E5",
+    table.font.size = 14,
+    heading.title.font.size = 16,
+    heading.subtitle.font.size = 14,
+    source_notes.font.size = 8,
+    table.width = "100%") %>%
+  tab_style(locations = cells_title(groups = "title"),style = list(cell_text(weight = "bold", size = 16)))
+
+PressTreeTable_home
+```
+
+## Away Press Targets {.tabset}
+```{r}
+#| label: Away Pressing Target Stats
+#| title: Away Pressing Target Stats
+#| results: asis
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  AIPressTargetTable_away <- PressTargetTableData_away %>% 
+    gt(rowname_col = "Target") %>%
+    #  gt_theme_538() %>%
+    cols_align(align = "right", columns = everything()) %>%
+    fmt_percent(columns = c(`Target High Value Rate`), decimals = 0) %>%
+    fmt_percent(columns = c(`Target Efficiency`), decimals = 0) %>%
+    tab_header(
+      title = md("Pressing Targeting Stats"),
+      subtitle = paste0(Match_Fixture)) %>%
+      tab_source_note(md(My_caption)) %>%
+    #tab_source_note(md("AI Pressing Data")) %>%
+    summary_rows(groups = NULL, fns = list(Average = ~ mean (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+    summary_rows(groups = NULL, fns = list(Total = ~ sum (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+    tab_options(
+      heading.padding = px(1),
+      heading.align = "left",
+      column_labels.background.color = "#E5E5E5",
+      row_group.background.color = Color_Away,
+      stub.background.color = "#E5E5E5",
+      column_labels.border.bottom.color = "black",
+      summary_row.background.color = "#E5E5E5",
+      table.font.size = 14,
+      heading.title.font.size = 16,
+      heading.subtitle.font.size = 14,
+      source_notes.font.size = 8,
+      table.width = "100%") %>%
+    tab_style(locations = cells_title(groups = "title"),style = list(cell_text(weight = "bold", size = 16))) %>%
+    #  tab_style(locations = cells_title(groups = "subtitle"),style = list(cell_text(weight = "normal", style = "italic", size = 14))) %>%
+    #  gt_color_rows(c(2),palette = ColorScale_Home, domain = NULL) %>%
+    gt_color_rows(c(2, 5:7),palette = ColorScale_Away, domain = NULL)
+  
+  AIPressTargetTable_away
+
+```
+```{r}
+#| label: Away Pressing Target Details
+#| title: Away Pressing Target Details
+#| results: asis
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  PressTreeTable_Away <- PressTargets_away %>% 
+    gt(rowname_col = "Target", groupname_col = "Player") %>%
+    #  gt_theme_538() %>%
+    cols_align(align = "right", columns = everything()) %>%
+    tab_header(
+      title = md("Press Oppo Targeting Details"),
+      subtitle = paste0(Match_Fixture)) %>%
+      tab_source_note(md(My_caption)) %>%
+    #tab_source_note(md("AI Pressing Data")) %>%
+    summary_rows(groups = TRUE, fns = list(Average = ~ mean (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+    summary_rows(groups = TRUE, fns = list(Total = ~ sum (., na.rm=TRUE)), formatter = fmt_number, decimals = 0, use_seps = TRUE) %>%
+    tab_options(
+      heading.padding = px(1),
+      heading.align = "left",
+      column_labels.background.color = "#E5E5E5",
+      row_group.background.color = Color_Away,
+      stub.background.color = "#E5E5E5",
+      column_labels.border.bottom.color = "black",
+      summary_row.background.color = "#E5E5E5",
+      table.font.size = 14,
+      heading.title.font.size = 16,
+      heading.subtitle.font.size = 14,
+      source_notes.font.size = 8,
+      table.width = "100%") %>%
+    tab_style(locations = cells_title(groups = "title"),style = list(cell_text(weight = "bold", size = 16)))
+  
+  PressTreeTable_Away
+```
+
+## Press Network Plots {.flow}
+### Home
+```{r}
+#| label: Home Press Map 1st Sub
+#| title: Home Press Map
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+PressnetworkSummaryData_home <- PressnetworkSummaryData_home %>%
+  filter(Mins_Played >= firstSubHome) 
+
+#filter my min
+PressNetworkData_home <- PressNetworkData_home %>%
+  filter(minute <= firstSubHome)
+
+#plot press direction
+PressNetworkPlot_home <- PressNetworkData_home %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+  theme_pitch() +
+  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  
+  # add zone numbers
+  geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+  
+  #geometrics
+  geom_segment(aes(x = averageX, y = averageY, xend = x, yend = y, color = Player, linetype = ifelse(Failed_Press, "solid", "dotted")),
+               arrow = arrow(length = unit(0.20, "cm"), type = "closed")) +
+  
+  #plot player average positions
+  geom_point(data = PressnetworkSummaryData_home, aes(x = averageX, y = averageY, fill = `Press Efficiency`, color = Player), size = 6, shape = 21, stroke = 1.5) +
+  geom_point(data = PressnetworkSummaryData_home, aes(x = averageX, y = averageY), fill = "black", size = 3, shape = 21, stroke = 1) +
+  
+  #plot player names
+  geom_text(data = PressnetworkSummaryData_home, aes(x = averageX, y = averageY,  label = Shirt), color = "white", size = 2, fontface = "bold") +
+  
+  scale_fill_gradientn(colors = ColorScale_HomeC) +
+  scale_color_manual(values = ColorScale_Home) +
+
+
+  #formatting
+  labs(title = paste0(Match_Home, " Team Press Directional Map"), 
+       subtitle = paste0(Match_Fixture,"  \n Direction of play Left to Right, Darker Red Ring = Higher Press Effeciency \n Dot  = Player Average Press Position, Dotted Arrow = Failed Press"),
+       caption = My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+#call plot
+    PressNetworkPlot_home
+
+```
+
+### Away
+```{r}
+#| label: Away Press Map 1st Sub
+#| title: Away Press Map
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+PressnetworkSummaryData_away <- PressnetworkSummaryData_away %>%
+  filter(Mins_Played >= firstSubAway) 
+
+#filter my min
+PressNetworkData_away <- PressNetworkData_away %>%
+  filter(minute <= firstSubAway)
+
+#plot press direction
+PressNetworkPlot_away <- PressNetworkData_away %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+  theme_pitch() +
+  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.2, colour = "#95A5A6") +
+  
+  # add zone numbers
+  geom_text(aes(y = 50, x = 74.7, label = "14"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 71.05, x = 74.7, label = "LHS"), size = 3, color = "grey", show.legend = FALSE) +
+  geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 3, color = "grey", show.legend = FALSE) +
+  
+  #geometrics
+  geom_segment(aes(x = averageX, y = averageY, xend = x, yend = y, color = Player, linetype = ifelse(Failed_Press, "solid", "dotted")),
+               arrow = arrow(length = unit(0.20, "cm"), type = "closed")) +
+  
+  #plot player average positions
+  geom_point(data = PressnetworkSummaryData_away, aes(x = averageX, y = averageY, fill = `Press Efficiency`, color = Player), size = 6, shape = 21, stroke = 2) +
+  geom_point(data = PressnetworkSummaryData_away, aes(x = averageX, y = averageY), fill = "black", size = 3, shape = 21, stroke = 1) +
+  
+  #plot player names
+  geom_text(data = PressnetworkSummaryData_away, aes(x = averageX, y = averageY,  label = Shirt), color = "white", size = 2, fontface = "bold") +
+  
+  scale_fill_gradientn(colors = ColorScale_AwayC) +
+  scale_color_manual(values = ColorScale_Away) +
+
+
+  #formatting
+  labs(title = paste0(Match_Away, " Team Press Directional Map"), 
+       subtitle = paste0(Match_Fixture,"  \n Direction of play Left to Right, Darker Red Ring = Higher Press Effeciency \n Dot  = Player Average Press Position, Dotted Arrow = Failed Press"),
+       caption = My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+#call plot
+    PressNetworkPlot_away
+
+```
+
+## PAPA Plots {.flow}
+### Home
+``` {r}
+#| label: Home PAPA
+#| title: Home PAPA
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+#plot the papa curve
+  PAPA_Plot_home <- PAPA_Data_home %>%
+    
+#canvas - choose between excel output and r overall is excel r is overall Percentile
+    ggplot(aes(x = minute, y = PAPA_Overall_Percentile_Roll)) +
+    annotation_custom(
+      grob = g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
+    
+#geometrics
+    geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
+    geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
+    geom_smooth(method = "loess", se = FALSE, color = "black") +
+    geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point,
+                                                  y = -0.5, 
+                                                  #y = PAPA_Overall_Percentile_Roll, 
+                                                  image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
+
+
+#formatting
+    scale_x_continuous(breaks = seq(0, 105, 15)) +
+    scale_y_continuous(breaks = seq(0, 100, 10)) +
+    expand_limits(x = 0, y = 0) +
+    coord_cartesian(expand = FALSE, clip = "off") +
+    
+    labs ( title = paste0(Match_Home, " PAPA"),
+           subtitle = Match_Fixture,
+           caption = My_caption,
+           x = "Minute of Match",
+           y = "Possession Adjusted Pressing Actions (PAPA) Percentile") +
+    theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+          panel.background = element_blank (),
+          plot.caption = element_markdown(),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 6),
+        legend.position = "none", 
+        #legend.direction = "horizontal", 
+        #legend.background = element_rect(fill = "#DBDBDB"), 
+        #legend.key = element_rect(fill = "#DBDBDB")) +
+          axis.title = element_text(colour = "black", face = "bold", size = 6),
+          axis.text = element_text(colour = "black", size = 6),
+          panel.grid.major = element_blank (),
+          panel.grid.minor.y = element_blank (),
+          panel.grid.minor.x = element_blank())
+  
+
+  PAPA_Plot_home  
+
+```
+### Away
+``` {r}
+#| label: Away PAPA
+#| title: Away PAPA
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+  #plot the papa curve
+  PAPA_Plot_away <- PAPA_Data_away %>%
+    
+    #canvas - choose between excel output and r overall is excel r is overall Percentile
+    ggplot(aes(x = minute, y = PAPA_Overall_Percentile_Roll)) +
+    annotation_custom(
+      grob = g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
+    
+    #geometrics
+    geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
+    geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
+    geom_smooth(method = "loess", se = FALSE, color = "black") +
+    geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point,
+                                                  y = -0.5, 
+                                                  #y = PAPA_Overall_Percentile_Roll, 
+                                                  image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
+    
+    
+    #formatting
+    scale_x_continuous(breaks = seq(0, 105, 15)) +
+    scale_y_continuous(breaks = seq(0, 100, 10)) +
+    expand_limits(x = 0, y = 0) +
+    coord_cartesian(expand = FALSE, clip = "off") +
+    
+    labs ( title = paste0(Match_Away, " PAPA"),
+           subtitle = Match_Fixture,
+           caption = My_caption,
+           x = "Minute of Match",
+           y = "Possession Adjusted Pressing Actions (PAPA) Percentile") +
+    theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+          panel.background = element_blank (),
+          plot.caption = element_markdown(),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 6),
+        legend.position = "none", 
+        #legend.direction = "horizontal", 
+        #legend.background = element_rect(fill = "#DBDBDB"), 
+        #legend.key = element_rect(fill = "#DBDBDB")) +
+          axis.title = element_text(colour = "black", face = "bold", size = 6),
+          axis.text = element_text(colour = "black", size = 6),
+          panel.grid.major = element_blank (),
+          panel.grid.minor.y = element_blank (),
+          panel.grid.minor.x = element_blank())
+  
+  PAPA_Plot_away
 
 ```
 
