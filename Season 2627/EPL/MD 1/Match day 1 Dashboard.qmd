@@ -4764,7 +4764,7 @@ HomepassPlot1stWD
 ```
 
 ```{r}
-#| title: home 2nd Half passnetwork
+#| title: Home 2nd Half passnetwork
 #| label: Home 2nd Half passnetwork
 #| echo: false
 #| message: false
@@ -5548,7 +5548,6 @@ touchpass_bar_data <- touchpass_bar_data %>%
       filter(!Own_Goals == 1 & TeamName == Match_Home) %>%
   filter(TeamName == Match_Home)
 
-
 touchpass_bar_data <- touchpass_bar_data %>%
   group_by(expandedMinute, minute) %>%
   summarize(
@@ -5591,17 +5590,17 @@ touchpass_bar_plot <- touchpass_bar_data %>%
          subtitle = paste0(Match_Fixture),
          x = "Match Time (Mins)",
          y = "Metric Total") +
-  theme(plot.title = element_markdown(),
-        plot.subtitle = element_text(size = 8),
-        plot.caption = element_markdown(),
-        plot.background = element_rect(colour = "snow", fill = "snow"),
-        axis.title = element_text(face = "bold", size = 6),
-        axis.text = element_text(size = 6),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.4, linetype = "dashed"),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        text = element_text(color = "gray12", family = "Arial"),
-        legend.position = "none")
+  theme(
+    legend.position = "none",
+    plot.background = element_rect(colour = "snow", fill = "snow"),
+    panel.background = element_rect(colour = "snow", fill = "snow"),
+    plot.title = element_markdown(),
+    plot.caption = element_markdown(),
+    plot.subtitle = element_text(colour = "black", size = 8),
+    axis.text = element_text(colour = "black", size = 6),
+    axis.title = element_text(colour = "black", size = 6, face = "bold"),
+    plot.margin  = margin(28, 20, 28, 20)
+  )
 
 touchpass_bar_plot
 ```
@@ -5666,17 +5665,17 @@ Awaytouchpass_bar_plot <- Awaytouchpass_bar_data %>%
          caption = My_caption,
          x = "Match Time (Mins)",
          y = "Metric Total") +
-  theme(plot.title = element_markdown(),
-        plot.subtitle = element_text(size = 8),
-        plot.caption = element_markdown(),
-        plot.background = element_rect(colour = "snow", fill = "snow"),
-        axis.title = element_text(face = "bold", size = 6),
-        axis.text = element_text(size = 6),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.4, linetype = "dashed"),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        text = element_text(color = "gray12", family = "Arial"),
-        legend.position = "none")
+  
+  theme(legend.position = "none",
+    plot.background = element_rect(colour = "snow", fill = "snow"),
+    panel.background = element_rect(colour = "snow", fill = "snow"),
+    plot.title = element_markdown(),
+    plot.caption = element_markdown(),
+    plot.subtitle = element_text(colour = "black", size = 8),
+    axis.text = element_text(colour = "black", size = 6),
+    axis.title = element_text(colour = "black", size = 6, face = "bold"),
+    plot.margin  = margin(28, 20, 28, 20)
+  ) 
 
 Awaytouchpass_bar_plot
 ```
@@ -9442,10 +9441,12 @@ AwayTeamTouchData <- TouchData %>%
 ## Home Touches  {.flow}
 ### Player {.tabset}
 ```{r}
-#| label: home player touch plot 1st Subs
+#| label: Home player touch plot 1st Subs
 #| title: Home player touch plot 1st Subs
-#| height: 100%
+##| height: 100%
 #| fig-dpi: 200
+#| fig-width: 4
+#| fig-height: 3.6
 #| message: false
 
 HomeconvexPlot1stsubs <- TouchPlayerPlot_AI(TouchDataHome,  title = Match_Home,
@@ -9454,9 +9455,12 @@ HomeconvexPlot1stsubs <- TouchPlayerPlot_AI(TouchDataHome,  title = Match_Home,
 HomeconvexPlot1stsubs
 ```
 ```{r}
-#| label: home player touch plot 1st Half
+#| label: Home player touch plot 1st Half
 #| title: Home player touch plot 1st Half
-#| height: 100%
+##| height: 100%
+#| fig-dpi: 200
+#| fig-width: 4
+#| fig-height: 3.6
 #| message: false
 
 TouchDataHome1 <- TouchDataHome %>%
@@ -9469,10 +9473,12 @@ HomeconvexPlot1sthalf
 ```
 
 ```{r}
-#| label: home player touch plot 2nd Half
+#| label: Home player touch plot 2nd Half
 #| title: Home player touch plot 2nd Half
-#| height: 100%
+##| height: 100%
 #| fig-dpi: 200
+#| fig-width: 4
+#| fig-height: 3.6
 #| message: false
 
 TouchDataHome2 <- TouchDataHome %>%
@@ -10817,19 +10823,18 @@ EPVTimePlot <- EPVPlotData %>%
          x = "Match time (Mins)",
          caption = My_caption,
          y = "EPV") +
-  theme(plot.title = element_text(colour = "black", face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "black", size = 12),
+  theme(plot.title = element_text(colour = "black", face = "bold", size = 12),
         plot.caption = element_markdown(),
+        legend.position = "none",
         plot.background = element_rect(colour = "snow", fill = "snow"),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        axis.title.x = element_text(colour = "black", face = "bold", size = 12),
-        axis.title.y = element_text(colour = "black", face = "bold", size = 12),
-        axis.text.x = element_text(colour = "black", size = 8),
-        axis.text.y = element_text(colour = "black", size = 8),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.4, linetype = "dashed"),
-        panel.grid.minor = element_blank())
+        plot.subtitle = element_text(colour = "black", size = 8),
+        axis.text = element_text(colour = "black", size = 6),
+        axis.title = element_text(colour = "black", size = 6, face = "bold"),
+        plot.margin  = margin(28, 20, 28, 20)
+        ) 
 
-EPVTimePlot
+  EPVTimePlot
 
 ```
 
@@ -10859,17 +10864,17 @@ AwayEPVTimePlot <- AwayEPVPlotData %>%
          caption = My_caption,
          x = "Match time (Mins)",
          y = "EPV") +
-  theme(plot.title = element_text(colour = "black", face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "black", size = 12),
+  theme(plot.title = element_text(colour = "black", face = "bold", size = 12),
         plot.caption = element_markdown(),
+        legend.position = "none",
         plot.background = element_rect(colour = "snow", fill = "snow"),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        axis.title.x = element_text(colour = "black", face = "bold", size = 12),
-        axis.title.y = element_text(colour = "black", face = "bold", size = 12),
-        axis.text.x = element_text(colour = "black", size = 8),
-        axis.text.y = element_text(colour = "black", size = 8),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.4, linetype = "dashed"),
-        panel.grid.minor = element_blank())
+        plot.subtitle = element_text(colour = "black", size = 8),
+        axis.text = element_text(colour = "black", size = 6),
+        axis.title = element_text(colour = "black", size = 6, face = "bold"),
+        plot.margin  = margin(28, 20, 28, 20)
+        ) 
+  
 AwayEPVTimePlot
 
 ```
@@ -10901,17 +10906,16 @@ HomeEPVConversionPlot <- EPVPlotData %>%
          caption = My_caption,
          x = "Match time (Mins)",
          y = "EPV Conversion %") +
-  theme(plot.title = element_text(colour = "black", face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "black", size = 12),
+  theme(plot.title = element_text(colour = "black", face = "bold", size = 12),
         plot.caption = element_markdown(),
+        legend.position = "none",
         plot.background = element_rect(colour = "snow", fill = "snow"),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        axis.title.x = element_text(colour = "black", face = "bold", size = 12),
-        axis.title.y = element_text(colour = "black", face = "bold", size = 12),
-        axis.text.x = element_text(colour = "black", size = 8),
-        axis.text.y = element_text(colour = "black", size = 8),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.4, linetype = "dashed"),
-        panel.grid.minor = element_blank())
+        plot.subtitle = element_text(colour = "black", size = 8),
+        axis.text = element_text(colour = "black", size = 6),
+        axis.title = element_text(colour = "black", size = 6, face = "bold"),
+        plot.margin  = margin(28, 20, 28, 20)
+        )
 HomeEPVConversionPlot
 ```
 
@@ -10941,17 +10945,16 @@ AwayEPVConversionPlot <- AwayEPVPlotData %>%
          caption = My_caption,
          x = "Match time (Mins)",
          y = "EPV Conversion %") +
-  theme(plot.title = element_text(colour = "black", face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "black", size = 12),
+  theme(plot.title = element_text(colour = "black", face = "bold", size = 12),
         plot.caption = element_markdown(),
+        legend.position = "none",
         plot.background = element_rect(colour = "snow", fill = "snow"),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        axis.title.x = element_text(colour = "black", face = "bold", size = 12),
-        axis.title.y = element_text(colour = "black", face = "bold", size = 12),
-        axis.text.x = element_text(colour = "black", size = 8),
-        axis.text.y = element_text(colour = "black", size = 8),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.4, linetype = "dashed"),
-        panel.grid.minor = element_blank())
+        plot.subtitle = element_text(colour = "black", size = 8),
+        axis.text = element_text(colour = "black", size = 6),
+        axis.title = element_text(colour = "black", size = 6, face = "bold"),
+        plot.margin  = margin(28, 20, 28, 20)
+        )
 AwayEPVConversionPlot
 
 ```
@@ -13003,9 +13006,7 @@ AwayDefEPVHeatMapplotFTS <- AwayDefEPVHeatMapDataFTS %>%
   geom_text(data = Average_PlayerFTS, aes(x, y, label = player_shirt), color = Color_Home_Text, size = 2) +
   
   #plot heat map
-  #stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.35, bins = 8, n = 300, adjust = 0.5, linewidth = 0, colour = NA) +
-  stat_density_2d(  #data = AwayEvents_FTS_w, 
-    aes(x = x, y = y, fill = after_stat(level)), geom = "polygon", alpha = 0.35, bins = 8, n = 300, adjust = 0.5, linewidth = 0, colour = NA) +
+  stat_density_2d(aes(x = x, y = y, fill = after_stat(level)), geom = "polygon", alpha = 0.35, bins = 8, n = 300, adjust = 0.5, linewidth = 0, colour = NA) +
   
   # add zone percentage numbers
   geom_text(data = Awayaverage_DefepvNZFTS, aes(x = x, y = y, label = paste(PEPV, "%")), size = 2) +
@@ -13233,7 +13234,6 @@ AwayDefEPVHeatMapplotFTU <- AwayDefEPVHeatMapDataFTU %>%
   labs(title = paste(Match_Away," Unsuccessful Defensive EPV Heat Map \nFull Game - Open Play "), 
                             subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher EPV Faced \nBox figures = % of Total EPV, Direction of Attack Right to Left"),
        caption =  My_caption) +
-  #coord_cartesian(xlim = c(0, 100), ylim = c(0, 100), expand = FALSE) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
@@ -13736,17 +13736,16 @@ HomePPDATimePlot <- HomePPDAPlotData %>%
        x = "Match time (Mins)",
        caption = My_caption,
        y = "PPDA") +
-  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
-        panel.background = element_blank(),
-        plot.title = element_markdown(),
+  theme(plot.title = element_text(colour = "black", face = "bold", size = 12),
         plot.caption = element_markdown(),
-        plot.title.position = "plot",
-        plot.subtitle = element_text(size = 08),
-        axis.title = element_text(colour = "gray12", size = 08),
-        axis.text = element_text(size = 6),
-        text = element_text(color = "gray12", family = "Arial"),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.2, linetype = "dashed"),
-        panel.grid.minor = element_blank())
+        legend.position = "none",
+        plot.background = element_rect(colour = "snow", fill = "snow"),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.subtitle = element_text(colour = "black", size = 8),
+        axis.text = element_text(colour = "black", size = 6),
+        axis.title = element_text(colour = "black", size = 6, face = "bold"),
+        plot.margin  = margin(28, 20, 28, 20)
+        ) 
 
 HomePPDATimePlot
 ```
@@ -13779,25 +13778,24 @@ AwayPPDATimePlot <- AwayPPDAPlotData %>%
        x = "Match time (Mins)",
        caption = My_caption,
        y = "PPDA") +
-  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
-        panel.background = element_blank(),
-        plot.title = element_markdown(),
+  theme(plot.title = element_text(colour = "black", face = "bold", size = 12),
         plot.caption = element_markdown(),
-        plot.title.position = "plot",
-        plot.subtitle = element_text(size = 08),
-        axis.title = element_text(colour = "gray12", size = 08),
-        axis.text = element_text(size = 6),
-        text = element_text(color = "gray12", family = "Arial"),
-        panel.grid.major = element_line(colour = "#454545", linewidth = 0.2, linetype = "dashed"),
-        panel.grid.minor = element_blank())
+        legend.position = "none",
+        plot.background = element_rect(colour = "snow", fill = "snow"),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.subtitle = element_text(colour = "black", size = 8),
+        axis.text = element_text(colour = "black", size = 6),
+        axis.title = element_text(colour = "black", size = 6, face = "bold"),
+        plot.margin  = margin(28, 20, 28, 20)
+        ) 
 
 AwayPPDATimePlot
 
 ```
-
-## DA Heat Map FT
+## DA Heat maps {.flow}
+### DA Heatmap Home  {.tabset}
 ```{r}
-#| title: DA Heat Map FT
+#| title: Defensive Actions Heat Map FT
 #| label: Home DA Heat Map FT
 #| fig-width: 4
 #| fig-height: 3.6
@@ -13845,13 +13843,117 @@ HomePPDAHeatMapplotFT <- HomePPDAHeatMapDataFT %>%
 
 HomePPDAHeatMapplotFT
 ```
+```{r}
+#| title: Defensive Actions 1st Half
+#| label: Home Defensive actions 1st Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+HomePPDAHeatMapplot1H <- HomePPDAHeatMapData1H %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
+  theme_pitch() +
+  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+  
+  #geometrics
+  #plot player positions
+  geom_point(data = AwayAverage_Player1H, aes(x, y), fill = Color_Away, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
+  
+  #plot heat map
+  stat_density_2d(aes(#color = after_stat(level), 
+    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+  
+  # add zone percentage numbers
+  geom_text(data = average_PPDANZ1H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
+  
+  #plot player names
+  geom_text(data = AwayAverage_Player1H, aes(x, y, label = player_shirt), color = Color_Away_Text, size = 2) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC) +
+  scale_color_manual(values = ColorScale_Home) + 
+  
+  #formatting
+  labs(title = paste0(Match_Home," Open Play Defensive Actions Heat Map \nFirst Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+HomePPDAHeatMapplot1H
+
+
+```
 
 ```{r}
-#| title: DA Heat Map FT
+#| title: Defensive actions 2nd Half
+#| label: Home Defensive actions 2nd Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+HomePPDAHeatMapplot2H <- HomePPDAHeatMapData2H %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
+  theme_pitch() +
+          annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+        annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+  
+  #geometrics
+  #plot player positions
+  geom_point(data = AwayAverage_Player2H, aes(x, y), fill = Color_Away, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
+  
+  #plot heat map
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+  
+  # add zone percentage numbers
+  geom_text(data = average_PPDANZ2H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
+  
+  #plot player names
+  geom_text(data = AwayAverage_Player2H, aes(x, y, label = player_shirt), color = Color_Away_Text, size = 2) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC) +
+  scale_color_manual(values = ColorScale_Home) + 
+
+  
+  #formatting
+  labs(title = paste0(Match_Home," Open Play Defensive Actions Heat Map \nSecond Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+HomePPDAHeatMapplot2H
+
+```
+
+### DA Heatmap Away {.tabset}
+```{r}
+#| title: Defensive Actions Heat Map FT
 #| label: Away DA Heat Map FT
 #| fig-width: 4
 #| fig-height: 3.6
 #| fig-dpi: 200
+
 AwayPPDAHeatMapplotFT <- AwayPPDAHeatMapDataFT %>%
   ggplot(aes(x = x, y = y)) +
   annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
@@ -13895,7 +13997,109 @@ AwayPPDAHeatMapplotFT <- AwayPPDAHeatMapDataFT %>%
 AwayPPDAHeatMapplotFT
 
 ```
+```{r}
+#| title: Defensive Actions 1st Half
+#| label: Away defensive actions 1st Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
 
+AwayPPDAHeatMapplot1H <- AwayPPDAHeatMapData1H %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
+  theme_pitch() +
+
+          annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+        annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+  
+  #geometrics
+  #plot player positions
+  geom_point(data = Average_Player1H, aes(x, y), fill = Color_Home, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
+  
+  #plot heat map
+  stat_density_2d(aes(#color = after_stat(level), 
+    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+  
+  # add zone percentage numbers
+  geom_text(data = Awayaverage_PPDANZ1H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
+  
+  #plot player names
+  geom_text(data = Average_Player1H, aes(x, y, label = player_shirt), color = Color_Home_Text, size = 2) +
+  
+  #set scales
+  #scale_fill_paletteer_c(ColorScale_AwayC) +
+  scale_fill_gradientn(colors = ColorScale_AwayC) +
+  scale_color_gradientn(colors = ColorScale_AwayC) +
+  
+  #formatting
+  labs(title = paste(Match_Away," Open Play Defensive Actions Heat Map \nFirst Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+AwayPPDAHeatMapplot1H
+
+```
+
+```{r}
+#| title: Defensive actions 2nd Half
+#| label: Away Defensive actions 2nd Half
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+AwayPPDAHeatMapplot2H <- AwayPPDAHeatMapData2H %>%
+  ggplot(aes(x = x, y = y)) +
+  annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
+  theme_pitch() +
+          annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+        annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
+  
+  #geometrics
+  #plot player positions
+  geom_point(data = Average_Player2H, aes(x, y), fill = Color_Home, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
+  
+  #plot heat map
+  stat_density_2d(aes(#color = after_stat(level), 
+    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+  
+  # add zone percentage numbers
+  geom_text(data = Awayaverage_PPDANZ2H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
+  
+  #plot player names
+  geom_text(data = Average_Player2H, aes(x, y, label = player_shirt), color = Color_Home_Text, size = 2) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_AwayC)+
+  scale_color_gradientn(colors = ColorScale_AwayC) +
+  
+  #formatting
+  labs(title = paste(Match_Away," Open Play Defensive Actions Heat Map \nSecond Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
+       caption =  My_caption) +
+  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+        plot.caption = element_markdown(),
+        panel.background = element_rect(colour = "snow", fill = "snow"),
+        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour = "black", size = 8),
+        legend.position = "none", 
+        legend.direction = "horizontal", 
+        legend.background = element_rect(fill = "#DBDBDB"), 
+        legend.key = element_rect(fill = "#DBDBDB"))
+
+AwayPPDAHeatMapplot2H
+
+```
 ## DA Subs
 ### DA Heatmap Home {.tabset}
 ```{r}
@@ -14101,216 +14305,6 @@ AwayPPDAHeatMapplotP1sub <- AwayPPDAHeatMapDataP1sub %>%
         legend.key = element_rect(fill = "#DBDBDB"))
 
 AwayPPDAHeatMapplotP1sub
-```
-
-## DA Halfs {.flow}
-### DA Heatmap Home  {.tabset}
-```{r}
-#| title: Defensive actions 1st Half
-#| label: Home Defensive actions 1st Half
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-
-HomePPDAHeatMapplot1H <- HomePPDAHeatMapData1H %>%
-  ggplot(aes(x = x, y = y)) +
-  annotate_pitch(dimensions = pitch_opta, fill = "#E5E5E5", colour = "#454545") +
-  theme_pitch() +
-  annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-  annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-  
-  #geometrics
-  #plot player positions
-  geom_point(data = AwayAverage_Player1H, aes(x, y), fill = Color_Away, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
-  
-  #plot heat map
-  stat_density_2d(aes(#color = after_stat(level), 
-    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-  
-  # add zone percentage numbers
-  geom_text(data = average_PPDANZ1H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
-  
-  #plot player names
-  geom_text(data = AwayAverage_Player1H, aes(x, y, label = player_shirt), color = Color_Away_Text, size = 2) +
-  
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_HomeC) +
-  scale_color_manual(values = ColorScale_Home) + 
-  
-  #formatting
-  labs(title = paste0(Match_Home," Open Play Defensive Actions Heat Map \nFirst Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
-       caption =  My_caption) +
-  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
-        plot.caption = element_markdown(),
-        panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
-        plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
-        legend.position = "none", 
-        legend.direction = "horizontal", 
-        legend.background = element_rect(fill = "#DBDBDB"), 
-        legend.key = element_rect(fill = "#DBDBDB"))
-
-HomePPDAHeatMapplot1H
-
-
-```
-
-```{r}
-#| title: Defensive actions 2nd Half
-#| label: Home Defensive actions 2nd Half
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-
-HomePPDAHeatMapplot2H <- HomePPDAHeatMapData2H %>%
-  ggplot(aes(x = x, y = y)) +
-  annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
-  theme_pitch() +
-          annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-        annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-  
-  #geometrics
-  #plot player positions
-  geom_point(data = AwayAverage_Player2H, aes(x, y), fill = Color_Away, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
-  
-  #plot heat map
-  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-  
-  # add zone percentage numbers
-  geom_text(data = average_PPDANZ2H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
-  
-  #plot player names
-  geom_text(data = AwayAverage_Player2H, aes(x, y, label = player_shirt), color = Color_Away_Text, size = 2) +
-  
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_HomeC) +
-  scale_color_manual(values = ColorScale_Home) + 
-
-  
-  #formatting
-  labs(title = paste0(Match_Home," Open Play Defensive Actions Heat Map \nSecond Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
-       caption =  My_caption) +
-  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
-        plot.caption = element_markdown(),
-        panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
-        plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
-        legend.position = "none", 
-        legend.direction = "horizontal", 
-        legend.background = element_rect(fill = "#DBDBDB"), 
-        legend.key = element_rect(fill = "#DBDBDB"))
-
-HomePPDAHeatMapplot2H
-
-```
-
-### DA Heatmap Away {.tabset}
-```{r}
-#| title: Defensive actions 1st Half
-#| label: Away defensive actions 1st Half
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-
-AwayPPDAHeatMapplot1H <- AwayPPDAHeatMapData1H %>%
-  ggplot(aes(x = x, y = y)) +
-  annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
-  theme_pitch() +
-
-          annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-        annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-  
-  #geometrics
-  #plot player positions
-  geom_point(data = Average_Player1H, aes(x, y), fill = Color_Home, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
-  
-  #plot heat map
-  stat_density_2d(aes(#color = after_stat(level), 
-    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-  
-  # add zone percentage numbers
-  geom_text(data = Awayaverage_PPDANZ1H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
-  
-  #plot player names
-  geom_text(data = Average_Player1H, aes(x, y, label = player_shirt), color = Color_Home_Text, size = 2) +
-  
-  #set scales
-  #scale_fill_paletteer_c(ColorScale_AwayC) +
-  scale_fill_gradientn(colors = ColorScale_AwayC) +
-  scale_color_gradientn(colors = ColorScale_AwayC) +
-  
-  #formatting
-  labs(title = paste(Match_Away," Open Play Defensive Actions Heat Map \nFirst Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
-       caption =  My_caption) +
-  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
-        plot.caption = element_markdown(),
-        panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
-        plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
-        legend.position = "none", 
-        legend.direction = "horizontal", 
-        legend.background = element_rect(fill = "#DBDBDB"), 
-        legend.key = element_rect(fill = "#DBDBDB"))
-
-AwayPPDAHeatMapplot1H
-
-```
-
-```{r}
-#| title: Defensive actions 2nd Half
-#| label: Away Defensive actions 2nd Half
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-
-AwayPPDAHeatMapplot2H <- AwayPPDAHeatMapData2H %>%
-  ggplot(aes(x = x, y = y)) +
-  annotate_pitch(dimensions = pitch_opta, fill = "#DBDBDB", colour = "#454545") +
-  theme_pitch() +
-          annotate("segment", y = c(21.1, 36.8, 63.2, 78.9), yend = c(21.1, 36.8, 63.2, 78.9), x = 0, xend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-        annotate("segment", x = c(17, 33.2, 50, 66.4, 83), xend = c(17, 33.2, 50, 66.4, 83), y = 0, yend = 100, linetype = "longdash", linewidth = 0.3, colour = "#95A5A6") +
-  
-  #geometrics
-  #plot player positions
-  geom_point(data = Average_Player2H, aes(x, y), fill = Color_Home, size = 6, shape = 21, colour = "black", stroke = 0.5, alpha = 0.4) +
-  
-  #plot heat map
-  stat_density_2d(aes(#color = after_stat(level), 
-    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-  
-  # add zone percentage numbers
-  geom_text(data = Awayaverage_PPDANZ2H, aes(x = x, y = y, label = paste(PPDA, "%")), size = 2) +
-  
-  #plot player names
-  geom_text(data = Average_Player2H, aes(x, y, label = player_shirt), color = Color_Home_Text, size = 2) +
-  
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_AwayC)+
-  scale_color_gradientn(colors = ColorScale_AwayC) +
-  
-  #formatting
-  labs(title = paste(Match_Away," Open Play Defensive Actions Heat Map \nSecond Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nBox figures = % of Total DA, \nDirection of Attack Right to Left"),
-       caption =  My_caption) +
-  theme(plot.background = element_rect(colour = "snow", fill = "snow"),
-        plot.caption = element_markdown(),
-        panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
-        plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
-        legend.position = "none", 
-        legend.direction = "horizontal", 
-        legend.background = element_rect(fill = "#DBDBDB"), 
-        legend.key = element_rect(fill = "#DBDBDB"))
-
-AwayPPDAHeatMapplot2H
-
 ```
 
 ## Post DA Win
@@ -16566,9 +16560,9 @@ PressHeatMapFT_home <- pressdataAI_home %>%
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -16612,9 +16606,9 @@ PressHeatMap1st_home <- pressdataAI_home  %>%
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -16658,9 +16652,9 @@ PressHeatMap2nd_home <- pressdataAI_home  %>%
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -16704,9 +16698,9 @@ PressHeatMap2nd_home
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -16749,9 +16743,9 @@ PressHeatMap2nd_home
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -16796,9 +16790,9 @@ PressHeatMap2nd_home
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -17194,9 +17188,9 @@ PressNetworkPlot_home <- PressNetworkData_home %>%
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -17257,9 +17251,9 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
-        plot.title = element_text(colour = "black", face = "bold", size = 10),
+        plot.title = element_text(colour = "black", face = "bold", size = 8),
         plot.title.position = "plot",
-        plot.subtitle = element_text(colour = "black", size = 8),
+        plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
         legend.direction = "horizontal", 
         legend.background = element_rect(fill = "#DBDBDB"), 
@@ -17288,8 +17282,8 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
       grob = g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
     
 #geometrics
-    geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
-    geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
+    #geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
+    #geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
     geom_smooth(method = "loess", se = FALSE, color = "black") +
     geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point,
                                                   y = -0.5, 
@@ -17345,8 +17339,8 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
       grob = g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
     
     #geometrics
-    geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
-    geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
+    #geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
+    #geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
     geom_smooth(method = "loess", se = FALSE, color = "black") +
     geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point,
                                                   y = -0.5, 
