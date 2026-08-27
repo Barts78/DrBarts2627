@@ -9457,20 +9457,20 @@ AwayTeamTouchData <- TouchData %>%
 ```{r}
 #| title: Home player touch plot 1st Subs
 #| label: Home player touch plot 1st Subs
-#| fig-dpi: 200
 #| height: 100%
+#| fig-dpi: 200
 #| message: false
 
 HomeconvexPlot1stsubs <- TouchPlayerPlot_AI(TouchDataHome,  title = Match_Home,
-                                    plot_start = 00, plot_finish = (firstSubHome-1), color = Color_Home, text_color = Color_Home_Text, method = "mad",
+                                    plot_start = 00, plot_finish = (firstSubHome - 1), color = Color_Home, text_color = Color_Home_Text, method = "mad",
                                     subtitle = paste0(Match_Fixture, " Up to 1st subs"))
 HomeconvexPlot1stsubs
 ```
 ```{r}
 #| title: Home player touch plot 1st Half
 #| label: Home player touch plot 1st Half
-#| fig-dpi: 200
 #| height: 100%
+#| fig-dpi: 200
 #| message: false
 
 TouchDataHome1 <- TouchDataHome %>%
@@ -9485,8 +9485,8 @@ HomeconvexPlot1sthalf
 ```{r}
 #| title: Home player touch plot 2nd Half
 #| label: Home player touch plot 2nd Half
-#| fig-dpi: 200
 #| height: 100%
+#| fig-dpi: 200
 #| message: false
 
 TouchDataHome2 <- TouchDataHome %>%
@@ -9568,7 +9568,7 @@ AwayconvexPlot1stSubs
 #| height: 100%
 #| fig-dpi: 200
 #| message: false
-#team touch plots Away
+
 TouchDataAway1 <- TouchDataAway %>%
   filter(period == 1)
 
@@ -9585,7 +9585,7 @@ AwayconvexPlot1sthalf
 #| height: 100%
 #| fig-dpi: 200
 #| message: false
-#team touch plots Away
+
 TouchDataAway2 <- TouchDataAway %>%
   filter(period == 2)
 
