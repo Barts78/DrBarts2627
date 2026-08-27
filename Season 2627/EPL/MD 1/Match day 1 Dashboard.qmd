@@ -9455,12 +9455,10 @@ AwayTeamTouchData <- TouchData %>%
 ## Home Touches  {.flow}
 ### Player {.tabset}
 ```{r}
+#| title: Home player touch plot 1st Subs
 #| label: Home player touch plot 1st Subs
-#| title: Player touch plot 1st Subs
-##| height: 100%
 #| fig-dpi: 200
-#| fig-width: 4
-#| fig-height: 3.6
+#| height: 100%
 #| message: false
 
 HomeconvexPlot1stsubs <- TouchPlayerPlot_AI(TouchDataHome,  title = Match_Home,
@@ -9469,12 +9467,10 @@ HomeconvexPlot1stsubs <- TouchPlayerPlot_AI(TouchDataHome,  title = Match_Home,
 HomeconvexPlot1stsubs
 ```
 ```{r}
+#| title: Home player touch plot 1st Half
 #| label: Home player touch plot 1st Half
-#| title: Player touch plot 1st Half
-##| height: 100%
 #| fig-dpi: 200
-#| fig-width: 4
-#| fig-height: 3.6
+#| height: 100%
 #| message: false
 
 TouchDataHome1 <- TouchDataHome %>%
@@ -9487,12 +9483,10 @@ HomeconvexPlot1sthalf
 ```
 
 ```{r}
+#| title: Home player touch plot 2nd Half
 #| label: Home player touch plot 2nd Half
-#| title: Player touch plot 2nd Half
-##| height: 100%
 #| fig-dpi: 200
-#| fig-width: 4
-#| fig-height: 3.6
+#| height: 100%
 #| message: false
 
 TouchDataHome2 <- TouchDataHome %>%
