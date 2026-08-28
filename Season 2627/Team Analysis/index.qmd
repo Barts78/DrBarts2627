@@ -42,7 +42,24 @@ I am a part time football analyst specialising in the Quarto and R ecosystems.
 <b>Bio</b>
 :::
 
-This is a home for my football visualisation work across **AI UP** and **TMM** pods.
+This is a home for my football visualisation work across **AnfieldIndex**, **The Under Pressure Podcast**.
+
+<div style="margin-top:1rem; text-align:center;">
+
+<a href="https://patreon.com/UnderPressurePodcastLFC?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_fan&utm_content=copyLink"
+   target="_blank"
+   class="btn btn-danger btn-lg"
+   style="font-weight:600;">
+
+🎙️ Join the Under Pressure Patreon
+
+</a>
+
+<p style="margin-top:0.75rem; font-size:0.9em; color:#666;">
+Support the show and get access to exclusive previews, bonus podcasts and additional analysis.
+</p>
+
+</div>
 ::::
 ## Browse by Special
 
@@ -54,36 +71,34 @@ This is a home for my football visualisation work across **AI UP** and **TMM** p
 
 base_dir <- "."
 
-excluded_dirs <- c(
-  "index_files",
-  "_site",
-  "_freeze",
-  ".quarto",
-  "Images",
-  "images"
-)
-
-
 # ------------------------------------------------------------
-# Find top-level dashboard folders only
+# Find all immediate top-level folders
 # ------------------------------------------------------------
 
-dashboard_dirs <- list.dirs(
-  path = base_dir,
+md_dirs <- list.dirs(
+  base_dir,
   recursive = FALSE,
   full.names = FALSE
 )
 
-dashboard_dirs <- dashboard_dirs[
-  !startsWith(dashboard_dirs, ".") &
-    !dashboard_dirs %in% excluded_dirs
+md_dirs <- md_dirs[!grepl("^\\.", md_dirs)]
+
+md_dirs <- md_dirs[
+  !md_dirs %in% c(
+    "index_files",
+    "_site",
+    "_freeze",
+    ".quarto",
+    "Images",
+    "images"
+  )
 ]
 
-dashboard_dirs <- sort(dashboard_dirs)
+md_dirs <- sort(md_dirs)
 
 
 # ------------------------------------------------------------
-# Safely encode paths while keeping folder separators
+# Encode relative URLs while preserving folder separators
 # ------------------------------------------------------------
 
 encode_relative_url <- function(path) {
@@ -111,46 +126,22 @@ encode_relative_url <- function(path) {
 
 
 # ------------------------------------------------------------
-# Find the dashboard HTML
-#
-# Normal structure:
-# MD 1/docs/index.html
-#
-# Match Previews structure:
-# Match Previews/index.html
+# Find docs folder regardless of capitalisation
 # ------------------------------------------------------------
 
-find_dashboard_html <- function(folder, base_dir = ".") {
+find_docs_dir <- function(md, base_dir = ".") {
 
-  folder_path <- file.path(
+  md_path <- file.path(
     base_dir,
-    folder
+    md
   )
 
-  if (!dir.exists(folder_path)) {
+  if (!dir.exists(md_path)) {
     return(NA_character_)
   }
 
-
-  # Match Previews has index.html directly in the folder
-  if (tolower(basename(folder)) == "match previews") {
-
-    preview_index <- file.path(
-      folder_path,
-      "index.html"
-    )
-
-    if (file.exists(preview_index)) {
-      return(preview_index)
-    }
-
-    return(NA_character_)
-  }
-
-
-  # Standard dashboards use a docs folder
   child_dirs <- list.dirs(
-    folder_path,
+    md_path,
     recursive = FALSE,
     full.names = TRUE
   )
@@ -163,7 +154,57 @@ find_dashboard_html <- function(folder, base_dir = ".") {
     return(NA_character_)
   }
 
-  docs_dir <- docs_match[1]
+  docs_match[1]
+}
+
+
+# ------------------------------------------------------------
+# Find the dashboard HTML
+#
+# Normal folders:
+# Folder Name/docs/page.html
+#
+# Match Previews:
+# Match Previews/index.html
+# ------------------------------------------------------------
+
+find_dashboard_html <- function(md, base_dir = ".") {
+
+  md_path <- file.path(
+    base_dir,
+    md
+  )
+
+  if (!dir.exists(md_path)) {
+    return(NA_character_)
+  }
+
+
+  # Special case: Match Previews links directly to its index
+  if (tolower(trimws(md)) == "match previews") {
+
+    preview_index <- file.path(
+      md_path,
+      "index.html"
+    )
+
+    if (file.exists(preview_index)) {
+      return(preview_index)
+    }
+
+    return(NA_character_)
+  }
+
+
+  # Standard folders use a docs directory
+  docs_dir <- find_docs_dir(
+    md,
+    base_dir
+  )
+
+  if (is.na(docs_dir)) {
+    return(NA_character_)
+  }
 
   html_files <- list.files(
     docs_dir,
@@ -177,7 +218,7 @@ find_dashboard_html <- function(folder, base_dir = ".") {
   }
 
 
-  # Prefer index.html
+  # Prefer index.html if present
   index_file <- html_files[
     tolower(basename(html_files)) == "index.html"
   ]
@@ -187,53 +228,8 @@ find_dashboard_html <- function(folder, base_dir = ".") {
   }
 
 
-  # Otherwise try an HTML file matching the dashboard folder
-  dashboard_name <- basename(folder)
-
-  expected_names <- tolower(
-    c(
-      paste0(dashboard_name, ".html"),
-      paste0(
-        gsub("\\s+", "-", dashboard_name),
-        ".html"
-      ),
-      paste0(
-        gsub("\\s+", "_", dashboard_name),
-        ".html"
-      )
-    )
-  )
-
-  matching_file <- html_files[
-    tolower(basename(html_files)) %in% expected_names
-  ]
-
-  if (length(matching_file)) {
-    return(matching_file[1])
-  }
-
-
-  # Final fallback
+  # Otherwise use first HTML file alphabetically
   sort(html_files)[1]
-}
-
-
-# ------------------------------------------------------------
-# Find the output directory containing images
-# ------------------------------------------------------------
-
-find_output_dir <- function(folder, html_path) {
-
-  if (is.na(html_path)) {
-    return(NA_character_)
-  }
-
-  # For Match Previews this is:
-  # Match Previews/
-  #
-  # For standard dashboards this is:
-  # MD 1/docs/
-  dirname(html_path)
 }
 
 
@@ -241,32 +237,78 @@ find_output_dir <- function(folder, html_path) {
 # Find thumbnail
 # ------------------------------------------------------------
 
-pick_dashboard_thumb <- function(
-  folder,
-  output_dir,
-  base_dir = "."
-) {
-
-  fallback <- "Images/champions-league-ball.png"
+default_thumb <- "Images/Premier-league-ball.png"
+fallback_thumb <- "Images/champions-league-ball.png"
 
 
-  # Match Previews is an index page, so use fallback image
-  if (tolower(basename(folder)) == "match previews") {
-    return(fallback)
+pick_md_thumb <- function(md, base_dir = ".") {
+
+  # Match Previews is a subsection index, so use a fixed image
+  if (tolower(trimws(md)) == "match previews") {
+    return(default_thumb)
   }
 
 
-  if (
-    is.na(output_dir) ||
-    !dir.exists(output_dir)
-  ) {
-    return(fallback)
+  docs_dir <- find_docs_dir(
+    md,
+    base_dir
+  )
+
+  if (is.na(docs_dir)) {
+    return(fallback_thumb)
   }
 
 
-  # Search recursively for the probability plot
+  # Extract MD number from names such as:
+  # CLMD 2 -> 2
+  # MD 2   -> 2
+  md_num <- sub(
+    "^(CL)?MD\\s+",
+    "",
+    md,
+    ignore.case = TRUE
+  )
+
+
+  # Original expected thumbnail path
+  thumb_path <- file.path(
+    docs_dir,
+    paste0(
+      "-International-break-",
+      md_num,
+      "-Dashboard_files"
+    ),
+    "figure-html",
+    "Match Result Probablity Plot-1.png"
+  )
+
+  if (file.exists(thumb_path)) {
+
+    relative_path <- file.path(
+      md,
+      basename(docs_dir),
+      paste0(
+        "-International-break-",
+        md_num,
+        "-Dashboard_files"
+      ),
+      "figure-html",
+      "Match Result Probablity Plot-1.png"
+    )
+
+    return(
+      gsub(
+        "\\\\",
+        "/",
+        relative_path
+      )
+    )
+  }
+
+
+  # Recursive fallback for differently named Quarto folders
   image_files <- list.files(
-    output_dir,
+    docs_dir,
     pattern = "\\.(png|jpg|jpeg|webp)$",
     recursive = TRUE,
     full.names = TRUE,
@@ -274,9 +316,8 @@ pick_dashboard_thumb <- function(
   )
 
   if (!length(image_files)) {
-    return(fallback)
+    return(fallback_thumb)
   }
-
 
   probability_plot <- image_files[
     grepl(
@@ -287,25 +328,19 @@ pick_dashboard_thumb <- function(
   ]
 
   if (!length(probability_plot)) {
-    return(fallback)
+    return(fallback_thumb)
   }
 
 
-  base_normalised <- normalizePath(
-    base_dir,
-    winslash = "/",
-    mustWork = FALSE
-  )
-
-  image_normalised <- normalizePath(
+  relative_inside_docs <- substring(
     probability_plot[1],
-    winslash = "/",
-    mustWork = FALSE
+    nchar(docs_dir) + 2
   )
 
-  relative_path <- substring(
-    image_normalised,
-    nchar(base_normalised) + 2
+  relative_path <- file.path(
+    md,
+    basename(docs_dir),
+    relative_inside_docs
   )
 
   gsub(
@@ -317,7 +352,7 @@ pick_dashboard_thumb <- function(
 
 
 # ------------------------------------------------------------
-# Extract subtitle from HTML
+# Extract a subtitle from the HTML
 # ------------------------------------------------------------
 
 extract_subtitle <- function(html_path) {
@@ -341,19 +376,19 @@ extract_subtitle <- function(html_path) {
   )
 
 
-  # Try HTML title
-  title_match <- regexpr(
+  # Try the HTML title
+  m <- regexpr(
     "(?is)<title>\\s*([^<]+?)\\s*</title>",
     txt,
     perl = TRUE
   )
 
-  if (title_match[1] != -1) {
+  if (m[1] != -1) {
 
     title <- sub(
       "(?is).*<title>\\s*([^<]+?)\\s*</title>.*",
       "\\1",
-      regmatches(txt, title_match),
+      regmatches(txt, m),
       perl = TRUE
     )
 
@@ -377,19 +412,19 @@ extract_subtitle <- function(html_path) {
   }
 
 
-  # Fall back to first H1
-  h1_match <- regexpr(
+  # Fallback to first H1
+  m2 <- regexpr(
     "(?is)<h1[^>]*>\\s*([^<]+?)\\s*</h1>",
     txt,
     perl = TRUE
   )
 
-  if (h1_match[1] != -1) {
+  if (m2[1] != -1) {
 
     h1 <- sub(
       "(?is).*<h1[^>]*>\\s*([^<]+?)\\s*</h1>.*",
       "\\1",
-      regmatches(txt, h1_match),
+      regmatches(txt, m2),
       perl = TRUE
     )
 
@@ -398,6 +433,17 @@ extract_subtitle <- function(html_path) {
     if (nzchar(h1)) {
       return(h1)
     }
+  }
+
+
+  if (
+    grepl(
+      "Match Previews",
+      html_path,
+      ignore.case = TRUE
+    )
+  ) {
+    return("Open Premier League match previews")
   }
 
   "Open dashboard"
@@ -409,11 +455,11 @@ extract_subtitle <- function(html_path) {
 # ------------------------------------------------------------
 
 cards <- vapply(
-  dashboard_dirs,
-  function(folder) {
+  md_dirs,
+  function(md) {
 
     full_html_path <- find_dashboard_html(
-      folder,
+      md,
       base_dir
     )
 
@@ -421,54 +467,58 @@ cards <- vapply(
       return(NA_character_)
     }
 
-    output_dir <- find_output_dir(
-      folder,
-      full_html_path
+
+    # Build relative link
+    if (tolower(trimws(md)) == "match previews") {
+
+      rel_path <- file.path(
+        md,
+        "index.html"
+      )
+
+    } else {
+
+      docs_dir <- find_docs_dir(
+        md,
+        base_dir
+      )
+
+      rel_path <- file.path(
+        md,
+        basename(docs_dir),
+        basename(full_html_path)
+      )
+    }
+
+    rel_path <- gsub(
+      "\\\\",
+      "/",
+      rel_path
+    )
+
+    url <- encode_relative_url(
+      rel_path
     )
 
 
-    # Convert HTML path to a relative path
-    base_normalised <- normalizePath(
-      base_dir,
-      winslash = "/",
-      mustWork = FALSE
-    )
-
-    html_normalised <- normalizePath(
-      full_html_path,
-      winslash = "/",
-      mustWork = FALSE
-    )
-
-    relative_html_path <- substring(
-      html_normalised,
-      nchar(base_normalised) + 2
-    )
-
-    dashboard_url <- encode_relative_url(
-      relative_html_path
-    )
-
-
+    # Get subtitle
     subtitle <- extract_subtitle(
       full_html_path
     )
 
 
-    thumbnail_path <- pick_dashboard_thumb(
-      folder = folder,
-      output_dir = output_dir,
-      base_dir = base_dir
+    # Get thumbnail
+    thumb <- pick_md_thumb(
+      md,
+      base_dir
     )
 
-    thumbnail_url <- encode_relative_url(
-      thumbnail_path
+    thumb_url <- encode_relative_url(
+      thumb
     )
 
 
-    dashboard_name <- basename(folder)
-
-
+    # Build card
     sprintf(
       paste0(
         '<div class="g-col-12 g-col-md-6 g-col-lg-4">\n',
@@ -483,10 +533,10 @@ cards <- vapply(
         '  </div>\n',
         '</div>\n'
       ),
-      thumbnail_url,
-      htmltools::htmlEscape(dashboard_name),
-      dashboard_url,
-      htmltools::htmlEscape(dashboard_name),
+      thumb_url,
+      htmltools::htmlEscape(md),
+      url,
+      htmltools::htmlEscape(md),
       htmltools::htmlEscape(subtitle)
     )
 
@@ -495,32 +545,24 @@ cards <- vapply(
 )
 
 
+# Remove folders without a valid page
 cards <- cards[
   !is.na(cards)
 ]
 
 
 # ------------------------------------------------------------
-# Output card grid
+# Output dashboard grid
 # ------------------------------------------------------------
 
-if (length(cards) == 0) {
+output <- paste0(
+  '<div class="grid">\n',
+  paste(
+    cards,
+    collapse = "\n"
+  ),
+  "\n</div>\n"
+)
 
-  knitr::asis_output(
-    '<p>No dashboard folders containing an HTML page were found.</p>'
-  )
-
-} else {
-
-  output <- paste0(
-    '<div class="grid">\n',
-    paste(
-      cards,
-      collapse = "\n"
-    ),
-    "\n</div>\n"
-  )
-
-  knitr::asis_output(output)
-}
+knitr::asis_output(output)
 ```
