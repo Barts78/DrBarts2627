@@ -101,27 +101,17 @@ md_dirs <- sort(md_dirs)
 # Encode relative URLs while preserving folder separators
 # ------------------------------------------------------------
 
-encode_relative_url <- function(path) {
+clean_web_path <- function(path) {
 
   path <- gsub("\\\\", "/", path)
 
-  parts <- strsplit(
-    path,
-    "/",
-    fixed = TRUE
-  )[[1]]
+  # Remove leading ./ because it can cause problems in rendered pages
+  path <- sub("^\\./", "", path)
 
-  encoded_parts <- vapply(
-    parts,
-    utils::URLencode,
-    character(1),
-    reserved = TRUE
-  )
+  # Encode spaces only, while preserving /
+  path <- gsub(" ", "%20", path, fixed = TRUE)
 
-  paste(
-    encoded_parts,
-    collapse = "/"
-  )
+  path
 }
 
 
@@ -243,70 +233,21 @@ fallback_thumb <- "Images/champions-league-ball.png"
 
 pick_md_thumb <- function(md, base_dir = ".") {
 
-  # Match Previews is a subsection index, so use a fixed image
+  # Match Previews uses the fixed Premier League image
   if (tolower(trimws(md)) == "match previews") {
     return(default_thumb)
   }
-
 
   docs_dir <- find_docs_dir(
     md,
     base_dir
   )
 
-  if (is.na(docs_dir)) {
+  if (is.na(docs_dir) || !dir.exists(docs_dir)) {
     return(fallback_thumb)
   }
 
-
-  # Extract MD number from names such as:
-  # CLMD 2 -> 2
-  # MD 2   -> 2
-  md_num <- sub(
-    "^(CL)?MD\\s+",
-    "",
-    md,
-    ignore.case = TRUE
-  )
-
-
-  # Original expected thumbnail path
-  thumb_path <- file.path(
-    docs_dir,
-    paste0(
-      "-International-break-",
-      md_num,
-      "-Dashboard_files"
-    ),
-    "figure-html",
-    "Match Result Probablity Plot-1.png"
-  )
-
-  if (file.exists(thumb_path)) {
-
-    relative_path <- file.path(
-      md,
-      basename(docs_dir),
-      paste0(
-        "-International-break-",
-        md_num,
-        "-Dashboard_files"
-      ),
-      "figure-html",
-      "Match Result Probablity Plot-1.png"
-    )
-
-    return(
-      gsub(
-        "\\\\",
-        "/",
-        relative_path
-      )
-    )
-  }
-
-
-  # Recursive fallback for differently named Quarto folders
+  # Search recursively for all suitable image files
   image_files <- list.files(
     docs_dir,
     pattern = "\\.(png|jpg|jpeg|webp)$",
@@ -319,6 +260,7 @@ pick_md_thumb <- function(md, base_dir = ".") {
     return(fallback_thumb)
   }
 
+  # Find the Match Result Probability plot
   probability_plot <- image_files[
     grepl(
       "Match[ _-]*Result[ _-]*Probab.*lity[ _-]*Plot",
@@ -331,7 +273,7 @@ pick_md_thumb <- function(md, base_dir = ".") {
     return(fallback_thumb)
   }
 
-
+  # Convert the located filesystem path into a relative website path
   relative_inside_docs <- substring(
     probability_plot[1],
     nchar(docs_dir) + 2
@@ -343,11 +285,7 @@ pick_md_thumb <- function(md, base_dir = ".") {
     relative_inside_docs
   )
 
-  gsub(
-    "\\\\",
-    "/",
-    relative_path
-  )
+  gsub("\\\\", "/", relative_path)
 }
 
 
@@ -495,26 +433,25 @@ cards <- vapply(
       "/",
       rel_path
     )
-
-    url <- encode_relative_url(
-      rel_path
-    )
-
-
-    # Get subtitle
-    subtitle <- extract_subtitle(
-      full_html_path
-    )
-
-
+    
     # Get thumbnail
     thumb <- pick_md_thumb(
       md,
       base_dir
     )
+    
+    thumb_url <- clean_web_path(
+  thumb
+  )
+        
+   # Build dashboard URL
+    url <- clean_web_path(
+  rel_path
+  )
 
-    thumb_url <- encode_relative_url(
-      thumb
+    # Get subtitle
+    subtitle <- extract_subtitle(
+      full_html_path
     )
 
 
