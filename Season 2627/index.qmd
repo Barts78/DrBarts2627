@@ -89,7 +89,7 @@ comp_dirs <- sort(comp_dirs)
 # ---- Add external "Players" card (from a different repo) ----
 # This is a named list of extra cards you want alongside local folders.
 extra_cards <- list(
-  "Player Analysis" = "https://barts78.github.io/DrBartsPlayers/Season%202526/"
+  "Player Analysis" = "https://barts78.github.io/DrBartsPlayers/Season%202627/"
 )
 
 # Merge: local comps + extra card label(s)
