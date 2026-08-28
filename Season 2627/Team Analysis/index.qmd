@@ -54,14 +54,6 @@ This is a home for my football visualisation work across **AI UP** and **TMM** p
 
 base_dir <- "."
 
-# Find immediate child directories
-md_dirs <- list.dirs(
-  path = base_dir,
-  recursive = FALSE,
-  full.names = FALSE
-)
-
-# Remove folders that should not become dashboard cards
 excluded_dirs <- c(
   "index_files",
   "_site",
@@ -71,18 +63,85 @@ excluded_dirs <- c(
   "images"
 )
 
-md_dirs <- md_dirs[
-  !startsWith(md_dirs, ".") &
-    !md_dirs %in% excluded_dirs
+
+# ------------------------------------------------------------
+# Find dashboard folders
+# ------------------------------------------------------------
+
+# Standard dashboard folders directly inside base_dir
+top_level_dirs <- list.dirs(
+  path = base_dir,
+  recursive = FALSE,
+  full.names = FALSE
+)
+
+top_level_dirs <- top_level_dirs[
+  !startsWith(top_level_dirs, ".") &
+    !top_level_dirs %in% excluded_dirs &
+    top_level_dirs != "Match Previews"
 ]
+
+
+# Dashboard folders inside Match Previews
+match_previews_dir <- file.path(
+  base_dir,
+  "Match Previews"
+)
+
+if (dir.exists(match_previews_dir)) {
+
+  preview_dirs <- list.dirs(
+    path = match_previews_dir,
+    recursive = FALSE,
+    full.names = FALSE
+  )
+
+  preview_dirs <- preview_dirs[
+    !startsWith(preview_dirs, ".") &
+      !preview_dirs %in% excluded_dirs
+  ]
+
+  # Store full relative path
+  # e.g. "Match Previews/MD 2 Preview"
+  preview_dirs <- file.path(
+    "Match Previews",
+    preview_dirs
+  )
+
+} else {
+
+  preview_dirs <- character(0)
+}
+
+
+# Combine normal matchday folders and preview folders
+md_dirs <- c(
+  top_level_dirs,
+  preview_dirs
+)
 
 md_dirs <- sort(md_dirs)
 
 
-# Find the docs folder regardless of capitalisation
+# ------------------------------------------------------------
+# Helper: display only the final folder name
+# ------------------------------------------------------------
+
+display_name <- function(path) {
+  basename(path)
+}
+
+
+# ------------------------------------------------------------
+# Find docs folder regardless of capitalisation
+# ------------------------------------------------------------
+
 find_docs_dir <- function(md, base_dir = ".") {
 
-  md_path <- file.path(base_dir, md)
+  md_path <- file.path(
+    base_dir,
+    md
+  )
 
   if (!dir.exists(md_path)) {
     return(NA_character_)
@@ -106,7 +165,10 @@ find_docs_dir <- function(md, base_dir = ".") {
 }
 
 
+# ------------------------------------------------------------
 # Find the main HTML dashboard
+# ------------------------------------------------------------
+
 find_dashboard_html <- function(docs_dir) {
 
   if (is.na(docs_dir) || !dir.exists(docs_dir)) {
@@ -137,34 +199,58 @@ find_dashboard_html <- function(docs_dir) {
 }
 
 
+# ------------------------------------------------------------
 # Find the probability plot thumbnail
+# ------------------------------------------------------------
+
 pick_md_thumb <- function(md, base_dir = ".") {
 
-  docs_dir <- find_docs_dir(md, base_dir)
+  docs_dir <- find_docs_dir(
+    md,
+    base_dir
+  )
 
   if (is.na(docs_dir) || !dir.exists(docs_dir)) {
     return("Images/champions-league-ball.png")
   }
 
+  # Use only the final folder name:
+  # "Match Previews/MD 2 Preview" becomes "MD 2 Preview"
+  dashboard_name <- basename(md)
+
   # Convert:
   # "MD 2 Preview" -> "MD-2-Preview"
   # "CLMD 2"       -> "CLMD-2"
-  dashboard_stem <- gsub("\\s+", "-", trimws(md))
+  dashboard_stem <- gsub(
+    "\\s+",
+    "-",
+    trimws(dashboard_name)
+  )
 
   # Possible Quarto support-folder formats
   possible_folders <- c(
-    paste0(dashboard_stem, "---Dashboard_files"),
-    paste0(dashboard_stem, "-Dashboard_files"),
-    paste0("-International-break-", dashboard_stem, "-Dashboard_files")
+    paste0(
+      dashboard_stem,
+      "---Dashboard_files"
+    ),
+    paste0(
+      dashboard_stem,
+      "-Dashboard_files"
+    ),
+    paste0(
+      "-International-break-",
+      dashboard_stem,
+      "-Dashboard_files"
+    )
   )
 
-  # Possible spellings/file names
+  # Possible spellings of probability
   possible_image_names <- c(
     "Match Result Probablity Plot-1.png",
     "Match Result Probability Plot-1.png"
   )
 
-  # First try the expected paths directly
+  # First check expected paths directly
   for (support_folder in possible_folders) {
 
     for (image_name in possible_image_names) {
@@ -186,12 +272,19 @@ pick_md_thumb <- function(md, base_dir = ".") {
           image_name
         )
 
-        return(gsub("\\\\", "/", relative_path))
+        return(
+          gsub(
+            "\\\\",
+            "/",
+            relative_path
+          )
+        )
       }
     }
   }
 
-  # Fallback: recursively search all generated image folders
+
+  # Fallback: recursively search all image folders
   image_files <- list.files(
     docs_dir,
     pattern = "\\.(png|jpg|jpeg|webp)$",
@@ -199,6 +292,10 @@ pick_md_thumb <- function(md, base_dir = ".") {
     full.names = TRUE,
     ignore.case = TRUE
   )
+
+  if (!length(image_files)) {
+    return("Images/champions-league-ball.png")
+  }
 
   probability_plot <- image_files[
     grepl(
@@ -221,14 +318,23 @@ pick_md_thumb <- function(md, base_dir = ".") {
       relative_inside_docs
     )
 
-    return(gsub("\\\\", "/", relative_path))
+    return(
+      gsub(
+        "\\\\",
+        "/",
+        relative_path
+      )
+    )
   }
 
   "Images/champions-league-ball.png"
 }
 
 
-# Extract a readable subtitle from the dashboard HTML
+# ------------------------------------------------------------
+# Extract subtitle from dashboard HTML
+# ------------------------------------------------------------
+
 extract_subtitle <- function(html_path) {
 
   x <- tryCatch(
@@ -244,7 +350,11 @@ extract_subtitle <- function(html_path) {
     return("Open matchday dashboard")
   }
 
-  txt <- paste(x, collapse = "\n")
+  txt <- paste(
+    x,
+    collapse = "\n"
+  )
+
 
   # First try the HTML title
   m <- regexpr(
@@ -262,14 +372,25 @@ extract_subtitle <- function(html_path) {
       perl = TRUE
     )
 
-    title <- gsub("\\s*\\|\\s*.*$", "", title)
-    title <- gsub("\\s*-\\s*Quarto$", "", title)
+    title <- gsub(
+      "\\s*\\|\\s*.*$",
+      "",
+      title
+    )
+
+    title <- gsub(
+      "\\s*-\\s*Quarto$",
+      "",
+      title
+    )
+
     title <- trimws(title)
 
     if (nzchar(title)) {
       return(title)
     }
   }
+
 
   # Fall back to the first H1
   m2 <- regexpr(
@@ -298,41 +419,79 @@ extract_subtitle <- function(html_path) {
 }
 
 
+# ------------------------------------------------------------
+# Build dashboard cards
+# ------------------------------------------------------------
+
 cards <- vapply(md_dirs, function(md) {
 
-  docs_dir <- find_docs_dir(md, base_dir)
+  docs_dir <- find_docs_dir(
+    md,
+    base_dir
+  )
 
   if (is.na(docs_dir)) {
     return(NA_character_)
   }
 
-  full_html_path <- find_dashboard_html(docs_dir)
+  full_html_path <- find_dashboard_html(
+    docs_dir
+  )
 
   if (is.na(full_html_path)) {
     return(NA_character_)
   }
 
-  # Preserve the actual docs folder capitalisation
+
+  # Preserve actual docs folder capitalisation
   docs_name <- basename(docs_dir)
   html_file <- basename(full_html_path)
 
-  rel_path <- file.path(md, docs_name, html_file)
-  rel_path <- gsub("\\\\", "/", rel_path)
 
-  # URLencode = TRUE ensures spaces become %20
+  # Dashboard link
+  rel_path <- file.path(
+    md,
+    docs_name,
+    html_file
+  )
+
+  rel_path <- gsub(
+    "\\\\",
+    "/",
+    rel_path
+  )
+
   url <- utils::URLencode(
     rel_path,
     reserved = TRUE
   )
 
-  subtitle <- extract_subtitle(full_html_path)
-  thumb <- pick_md_thumb(md, base_dir)
 
-  # Encode thumbnail paths containing spaces
+  # Dashboard subtitle
+  subtitle <- extract_subtitle(
+    full_html_path
+  )
+
+
+  # Dashboard thumbnail
+  thumb <- pick_md_thumb(
+    md,
+    base_dir
+  )
+
   thumb_url <- utils::URLencode(
-    gsub("\\\\", "/", thumb),
+    gsub(
+      "\\\\",
+      "/",
+      thumb
+    ),
     reserved = TRUE
   )
+
+
+  # Only show final folder name on card
+  card_name <- display_name(md)
+
 
   sprintf(
     paste0(
@@ -349,20 +508,31 @@ cards <- vapply(md_dirs, function(md) {
       '</div>\n'
     ),
     thumb_url,
-    htmltools::htmlEscape(md),
+    htmltools::htmlEscape(card_name),
     url,
-    htmltools::htmlEscape(md),
+    htmltools::htmlEscape(card_name),
     htmltools::htmlEscape(subtitle)
   )
 
 }, character(1))
 
 
-cards <- cards[!is.na(cards)]
+# Remove folders without valid dashboards
+cards <- cards[
+  !is.na(cards)
+]
+
+
+# ------------------------------------------------------------
+# Output cards
+# ------------------------------------------------------------
 
 output <- paste0(
   '<div class="grid">\n',
-  paste(cards, collapse = "\n"),
+  paste(
+    cards,
+    collapse = "\n"
+  ),
   "\n</div>\n"
 )
 
