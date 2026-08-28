@@ -153,8 +153,8 @@ AMOM = paste("")
 
 #################################
 #set color palletes
-HomeplottingData <- plottingData %>% filter(TeamName == homeTeam)
-AwayplottingData <- plottingData %>% filter(TeamName == awayTeam)
+HomeplottingData <- plottingData %>% filter(TeamName == Match_Home)
+AwayplottingData <- plottingData %>% filter(TeamName == Match_Away)
 
 
 homeplayers <- sort(unique(as.character(HomeplottingData$playerId)))
@@ -14423,15 +14423,41 @@ Post_DA_Action <- plottingData %>%
   mutate(Out_of_play = ifelse(eventId == 5 | eventId == 6, 1, 0)) %>%
   select(period, period_displayName, TeamName, playerId, player_shirt, Prog_Passes, Prog_Carries, Attempted_Passes, Successful_Passes, Successful_Long_Passes, Attempted_Carries, Successful_Carries, x, y, finalX, finalY, Prev_Defensive_Action, EPVvalue, EPVStart, EPVEnd, Defensive_Third, Attacking_Third, Middle_Third , Out_of_play)
 
+#Post_DA_Action <- Post_DA_Action %>%
+#  filter(Prev_Defensive_Action == 1
+#  ) %>%
+#  mutate(Pass_or_Carrie = ifelse(Successful_Passes == 1, 1, 0),
+#         Prog_Action = ifelse(Prog_Passes == 1 | Prog_Carries == 1, 1, 0)) %>%
+#  mutate(period_displayName = case_when(period_displayName == "FirstHalf" ~ "First Half",
+#                                        period_displayName == "SecondHalf" ~ "Second Half",
+#                                        TRUE ~ as.character(period_displayName)),
+#         Prog_Action = as.numeric(Prog_Action))
+
 Post_DA_Action <- Post_DA_Action %>%
-  filter(Prev_Defensive_Action == 1
-  ) %>%
-  mutate(Pass_or_Carrie = ifelse(Successful_Passes == 1, 1, 0),
-         Prog_Action = ifelse(Prog_Passes == 1 | Prog_Carries == 1, 1, 0)) %>%
-  mutate(period_displayName = case_when(period_displayName == "FirstHalf" ~ "First Half",
-                                        period_displayName == "SecondHalf" ~ "Second Half",
-                                        TRUE ~ as.character(period_displayName)),
-         Prog_Action = as.numeric(Prog_Action))
+  filter(Prev_Defensive_Action == 1) %>%
+  mutate(
+    Pass_or_Carrie = ifelse(Successful_Passes == 1, 1, 0),
+
+    Prog_Action = ifelse(
+      Prog_Passes == 1 | Prog_Carries == 1,
+      1,
+      0
+    ),
+
+    period_displayName = case_when(
+      period_displayName == "FirstHalf"  ~ "First Half",
+      period_displayName == "SecondHalf" ~ "Second Half",
+      TRUE ~ as.character(period_displayName)
+    ),
+
+    Prog_Action = factor(
+      Prog_Action,
+      levels = c(0, 1),
+      labels = c("Successful", "Progressive")
+    ),
+
+    action_id = row_number()
+  )
 
 Post_DA_Action <- shift_column(data = Post_DA_Action, columns = "playerId", new_names = "receiver", len = 1, up = TRUE)
 Post_DA_Action <- shift_column(data = Post_DA_Action, columns = "player_shirt", new_names = "receiver_shirt", len = 1, up = TRUE)
@@ -14893,35 +14919,42 @@ HomePostPPDAHeatMapplot1st <- Home_Successful_Post_DA_Action %>%
   #plot heat map
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
 
-  #plot next pass or carrie
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Home, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Home_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
   scale_fill_gradientn(colors = ColorScale_HomeC) +
   
   #formatting
   labs(title = paste(Match_Home,"Passes or Carries Post Successful DA - 1st Half"), 
        subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: Red = Progressive or Blue = Successful, \nCircle Number = receiving player, Direction of Attack Right to Left"),
-       caption =  My_caption) +
+       caption =  My_caption
+       ) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
@@ -14983,28 +15016,35 @@ HomePostPPDAHeatMapplot2nd <- Home_Successful_Post_DA_Action %>%
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
 
   #plot next pass or carrie
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Home, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Home_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
   scale_fill_gradientn(colors = ColorScale_HomeC) +
   
   #formatting
@@ -15052,34 +15092,42 @@ AwayPostPPDAHeatMapplot1st <- Away_Successful_Post_DA_Action %>%
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
 
   #plot next pass or carrie
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Away, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Away_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
   scale_fill_gradientn(colors = ColorScale_AwayC) +
   
   #formatting
   labs(title = paste(Match_Away,"Passes or Carries Post Successful DA - 1st Half"), 
        subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: Red = Progressive or Blue = Successful, \nCircle Number = receiving player, Direction of Attack Right to Left"),
-       caption =  My_caption) +
+       caption =  My_caption
+       ) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
         panel.background = element_rect(colour = "snow", fill = "snow"),
@@ -15142,28 +15190,35 @@ AwayPostPPDAHeatMapplot2nd <- Away_Successful_Post_DA_Action %>%
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
   
   #plot next pass or carrie
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Away, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Away_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
   scale_fill_gradientn(colors = ColorScale_AwayC) +
   
   #formatting
@@ -15212,28 +15267,35 @@ HomeUNPostPPDAHeatMapplot_1st <- Home_Unsuccessful_Post_DA_Action %>%
   #plot next pass or carrie
   scale_x_reverse() +
    
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Away, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Away_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
   scale_fill_gradientn(colors = ColorScale_HomeC) +
   
   #formatting
@@ -15303,28 +15365,35 @@ HomeUNPostPPDAHeatMapplot2nd <- Home_Unsuccessful_Post_DA_Action %>%
   #plot next pass or carrie
   scale_x_reverse() +
    
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+  geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Away, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Away_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
   scale_fill_gradientn(colors = ColorScale_HomeC) +
   
   #formatting
@@ -15372,31 +15441,42 @@ AwayPostPPDAHeatMapplot1st <- Away_Unsuccessful_Post_DA_Action %>%
   #plot heat map
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
     #set scales
-  scale_size(range = c(0.5, 2)) +
-  scale_fill_gradientn(colors = ColorScale_AwayC) +
+  #scale_size(range = c(0.5, 2)) +
+  #scale_fill_gradientn(colors = ColorScale_AwayC) +
   
   #plot next pass or carrie
   scale_x_reverse() +
    
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+  geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
   geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Home, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Home_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
+  
+  #set scales
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
+  scale_fill_gradientn(colors = ColorScale_AwayC) +
   
   #formatting
   labs(title = paste(Match_Away,"Oppo Passes or Carries Post Successful DA - 1st Half"), 
@@ -15465,31 +15545,42 @@ AwayPostPPDAHeatMapplot2nd <- Away_Unsuccessful_Post_DA_Action %>%
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
   
   #set scales
-  scale_size(range = c(0.5, 2)) +
-  scale_fill_gradientn(colors = ColorScale_AwayC) +
+  #scale_size(range = c(0.5, 2)) +
+  #scale_fill_gradientn(colors = ColorScale_AwayC) +
   
   #plot next pass or carrie
   scale_x_reverse() +
    
-  geom_link(aes( x = x, y = y, xend = finalX, yend = finalY, 
-                    color = Prog_Action, 
-                    alpha = stat(index),
-                    size = after_stat(index)
-                    ),
-            show.legend = NA,
-            inherit.aes = TRUE
-  ) +
+geom_link(
+  aes(
+    x = x,
+    y = y,
+    xend = finalX,
+    yend = finalY,
+    colour = Prog_Action,
+    alpha = after_stat(index),
+    linewidth = after_stat(index),
+    group = action_id
+  ),
+  show.legend = FALSE) +
   
   #plot receiving player from DA
-  geom_point(aes(x = finalX, y = finalY, color = Prog_Action),  fill = Color_Home,  size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
+  geom_point(aes(x = finalX, y = finalY, color = Prog_Action), fill = Color_Home, size = 4, shape = 21, stroke = 0.5, alpha = 0.8) +
   
   geom_text(aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Home_Text, size = 2) +
   
-  scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
-    values = scales::rescale(c(0, 1)), 
-    breaks = scales::breaks_width(0.01), 
-    name = "Progressive Pass") +
+scale_colour_manual(
+  values = c(
+    "Successful" = "#0000FF",
+    "Progressive" = "#BD1100"
+  ),
+  na.value = "grey50"
+) +
+  
+  #set scales
+  scale_linewidth(range = c(0.5, 2), guide = "none") +
+  scale_alpha(range = c(0.35, 1), guide = "none") +
+  scale_fill_gradientn(colors = ColorScale_AwayC) +
 
   
   #formatting
@@ -17428,10 +17519,10 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
 
 
 #formatting
-    scale_x_continuous(breaks = seq(0, 105, 15)) +
+    scale_x_continuous(breaks = seq(0, 135, 15)) +
     scale_y_continuous(breaks = seq(0, 100, 10)) +
     expand_limits(x = 0, y = 0) +
-    coord_cartesian(expand = FALSE, clip = "off") +
+    #coord_cartesian(expand = FALSE, clip = "off") +
     
     labs ( title = paste0(Match_Home, " PAPA"),
            subtitle = Match_Fixture,
@@ -17445,9 +17536,6 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
         plot.title.position = "plot",
         plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
-        #legend.direction = "horizontal", 
-        #legend.background = element_rect(fill = "#DBDBDB"), 
-        #legend.key = element_rect(fill = "#DBDBDB")) +
           axis.title = element_text(colour = "black", face = "bold", size = 6),
           axis.text = element_text(colour = "black", size = 6),
           panel.grid.major = element_blank (),
@@ -17475,20 +17563,17 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
       grob = g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
     
     #geometrics
-    #geom_segment(aes(y = 0, yend = 100, x = 45, xend = 45), linewidth = 0.8, colour = "black", linetype = "longdash") +
-    #geom_text(aes(x=45, y= 100, label="HT"), colour="black", angle=90, hjust = 1, vjust = 1.5, size=4) +
     geom_smooth(method = "loess", se = FALSE, color = "black", linewidth = 0.5) +
     geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point,
                                                   y = -0.5, 
-                                                  #y = PAPA_Overall_Percentile_Roll, 
                                                   image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
     
     
     #formatting
-    scale_x_continuous(breaks = seq(0, 105, 15)) +
+    scale_x_continuous(breaks = seq(0, 135, 15)) +
     scale_y_continuous(breaks = seq(0, 100, 10)) +
     expand_limits(x = 0, y = 0) +
-    coord_cartesian(expand = FALSE, clip = "off") +
+    #coord_cartesian(expand = FALSE, clip = "off") +
     
     labs ( title = paste0(Match_Away, " PAPA"),
            subtitle = Match_Fixture,
@@ -17502,9 +17587,6 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
         plot.title.position = "plot",
         plot.subtitle = element_text(colour = "black", size = 6),
         legend.position = "none", 
-        #legend.direction = "horizontal", 
-        #legend.background = element_rect(fill = "#DBDBDB"), 
-        #legend.key = element_rect(fill = "#DBDBDB")) +
           axis.title = element_text(colour = "black", face = "bold", size = 6),
           axis.text = element_text(colour = "black", size = 6),
           panel.grid.major = element_blank (),

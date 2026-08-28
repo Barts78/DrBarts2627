@@ -1,5 +1,5 @@
 ---
-title: "Preview Match day 2 Season 2627"
+title: "MD 2 Preview Season 2627"
 author: "Dr Phil Barter"
 format: 
   dashboard:
