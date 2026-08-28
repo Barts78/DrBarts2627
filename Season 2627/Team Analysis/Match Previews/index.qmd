@@ -42,11 +42,11 @@ I am a part time football analyst specialising in the Quarto and R ecosystems.
 <b>Bio</b>
 :::
 
-This is a home for my football visualisation work across **AI UP** and **TMM** pods.
+This is a home for my football visualisation work across **AI**, **UP** and **TMM** pods.
 
 Previews of EPL Games for the **2026 - 2027** Season
 ::::
-## Browse by Match Week / Round
+## Browse by Match Week
 
 
 ```{r}
@@ -84,11 +84,6 @@ pick_md_thumb <- function(md, base_dir = ".") {
     "Images/Premier-League-ball.png"   # fallback
   }
 }
-
-#pick_thumb <- function(md) {
-#  thumb <- unname(thumb_map[md])
-#  if (is.na(thumb) || length(thumb) == 0) default_thumb else thumb
-#}
 
 # Extract a nice subtitle from the HTML itself
 extract_subtitle <- function(html_path) {
