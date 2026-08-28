@@ -42,7 +42,24 @@ I am a part time football analyst specialising in the Quarto and R ecosystems.
 <b>Bio</b>
 :::
 
-This is a home for my football visualisation work across **AI UP** and **TMM** pods.
+This is a home for my football visualisation work across **AnfieldIndex** and the **Under Pressure Podcast**.
+
+<div style="margin-top:1rem; text-align:center;">
+
+<a href="https://patreon.com/UnderPressurePodcastLFC?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_fan&utm_content=copyLink"
+   target="_blank"
+   class="btn btn-danger btn-lg"
+   style="font-weight:600;">
+
+🎙️ Join the Under Pressure Patreon
+
+</a>
+
+<p style="margin-top:0.75rem; font-size:0.9em; color:#666;">
+Support the show and get access to exclusive previews, bonus podcasts and additional analysis.
+</p>
+
+</div>
 
 EPL Games for the **2026 - 2027** Season
 ::::
