@@ -61,8 +61,7 @@ Support the show and get access to exclusive previews, bonus podcasts and additi
 
 </div>
 ::::
-## Browse by Special
-
+## Browse Special or Preview
 
 ```{r}
 #| echo: false
@@ -71,433 +70,68 @@ Support the show and get access to exclusive previews, bonus podcasts and additi
 
 base_dir <- "."
 
-# ------------------------------------------------------------
-# Find all immediate top-level folders
-# ------------------------------------------------------------
-
-md_dirs <- list.dirs(
-  base_dir,
-  recursive = FALSE,
-  full.names = FALSE
+# Directories we NEVER want as competition cards
+exclude_dirs <- c(
+  "Images", "images", "bigrams", "data", "Data", "R", "scripts",
+  "_extensions", "_site", "_cache", "_freeze", "index_B_files",
+  "index_files", "site_libs"
 )
 
-md_dirs <- md_dirs[!grepl("^\\.", md_dirs)]
+# Get subdirectories (competitions)
+comp_dirs <- list.dirs(base_dir, recursive = FALSE, full.names = FALSE)
 
-md_dirs <- md_dirs[
-  !md_dirs %in% c(
-    "index_files",
-    "_site",
-    "_freeze",
-    ".quarto",
-    "Images",
-    "images"
-  )
-]
+# Keep only "real" folders
+comp_dirs <- comp_dirs[!grepl("^\\.", comp_dirs)]                # no hidden dirs
+comp_dirs <- comp_dirs[!comp_dirs %in% exclude_dirs]             # remove non-competitions
+comp_dirs <- comp_dirs[!grepl("^Season\\s+\\d+$", comp_dirs)]     # optional: exclude Season folders
+comp_dirs <- sort(comp_dirs)
 
-md_dirs <- sort(md_dirs)
+# ---- Thumbnail map (folder name -> image path) ----
+thumb_map <- c(
+  "EPL"      = "Images/EPL.png",
+  "FA Cup"   = "Images/FA_Cup.png",
+  "CL"      = "Images/UCL.png",
+  "League Cup"  = "Images/League_cup.png",
+  "Specials" = "Images/champions-league-ball.png",
+  "Match Preview" = "Images/Premier-League-ball.png",
+  "LFC Player Analysis"    = "Images/Players.png"
+)
 
+default_thumb <- "Images/Premier-League-ball.png"
 
-# ------------------------------------------------------------
-# Encode relative URLs while preserving folder separators
-# ------------------------------------------------------------
-
-clean_web_path <- function(path) {
-
-  path <- gsub("\\\\", "/", path)
-
-  # Remove leading ./ because it can cause problems in rendered pages
-  path <- sub("^\\./", "", path)
-
-  # Encode spaces only, while preserving /
-  path <- gsub(" ", "%20", path, fixed = TRUE)
-
-  path
+pick_thumb <- function(comp_name) {
+  thumb <- unname(thumb_map[comp_name])   # returns NA if not found
+  if (is.na(thumb) || length(thumb) == 0) default_thumb else thumb
 }
 
+# Build cards
+cards <- vapply(comp_dirs, function(comp) {
+  path <- gsub("\\\\", "/", file.path(comp, "")) # "EPL/"
+  url  <- utils::URLencode(path)
 
-# ------------------------------------------------------------
-# Find docs folder regardless of capitalisation
-# ------------------------------------------------------------
+  thumb <- pick_thumb(comp)
 
-find_docs_dir <- function(md, base_dir = ".") {
-
-  md_path <- file.path(
-    base_dir,
-    md
-  )
-
-  if (!dir.exists(md_path)) {
-    return(NA_character_)
-  }
-
-  child_dirs <- list.dirs(
-    md_path,
-    recursive = FALSE,
-    full.names = TRUE
-  )
-
-  docs_match <- child_dirs[
-    tolower(basename(child_dirs)) == "docs"
-  ]
-
-  if (!length(docs_match)) {
-    return(NA_character_)
-  }
-
-  docs_match[1]
-}
-
-
-# ------------------------------------------------------------
-# Find the dashboard HTML
-#
-# Normal folders:
-# Folder Name/docs/page.html
-#
-# Match Previews:
-# Match Previews/index.html
-# ------------------------------------------------------------
-
-find_dashboard_html <- function(md, base_dir = ".") {
-
-  md_path <- file.path(
-    base_dir,
-    md
-  )
-
-  if (!dir.exists(md_path)) {
-    return(NA_character_)
-  }
-
-
-  # Special case: Match Previews links directly to its index
-  if (tolower(trimws(md)) == "match previews") {
-
-    preview_index <- file.path(
-      md_path,
-      "index.html"
-    )
-
-    if (file.exists(preview_index)) {
-      return(preview_index)
-    }
-
-    return(NA_character_)
-  }
-
-
-  # Standard folders use a docs directory
-  docs_dir <- find_docs_dir(
-    md,
-    base_dir
-  )
-
-  if (is.na(docs_dir)) {
-    return(NA_character_)
-  }
-
-  html_files <- list.files(
-    docs_dir,
-    pattern = "\\.html$",
-    full.names = TRUE,
-    ignore.case = TRUE
-  )
-
-  if (!length(html_files)) {
-    return(NA_character_)
-  }
-
-
-  # Prefer index.html if present
-  index_file <- html_files[
-    tolower(basename(html_files)) == "index.html"
-  ]
-
-  if (length(index_file)) {
-    return(index_file[1])
-  }
-
-
-  # Otherwise use first HTML file alphabetically
-  sort(html_files)[1]
-}
-
-
-# ------------------------------------------------------------
-# Find thumbnail
-# ------------------------------------------------------------
-
-default_thumb <- "Images/Premier-league-ball.png"
-fallback_thumb <- "Images/champions-league-ball.png"
-
-
-pick_md_thumb <- function(md, base_dir = ".") {
-
-  # Match Previews uses the fixed Premier League image
-  if (tolower(trimws(md)) == "match previews") {
-    return(default_thumb)
-  }
-
-  docs_dir <- find_docs_dir(
-    md,
-    base_dir
-  )
-
-  if (is.na(docs_dir) || !dir.exists(docs_dir)) {
-    return(fallback_thumb)
-  }
-
-  # Search recursively for all suitable image files
-  image_files <- list.files(
-    docs_dir,
-    pattern = "\\.(png|jpg|jpeg|webp)$",
-    recursive = TRUE,
-    full.names = TRUE,
-    ignore.case = TRUE
-  )
-
-  if (!length(image_files)) {
-    return(fallback_thumb)
-  }
-
-  # Find the Match Result Probability plot
-  probability_plot <- image_files[
-    grepl(
-      "Match[ _-]*Result[ _-]*Probab.*lity[ _-]*Plot",
-      basename(image_files),
-      ignore.case = TRUE
-    )
-  ]
-
-  if (!length(probability_plot)) {
-    return(fallback_thumb)
-  }
-
-  # Convert the located filesystem path into a relative website path
-  relative_inside_docs <- substring(
-    probability_plot[1],
-    nchar(docs_dir) + 2
-  )
-
-  relative_path <- file.path(
-    md,
-    basename(docs_dir),
-    relative_inside_docs
-  )
-
-  gsub("\\\\", "/", relative_path)
-}
-
-
-# ------------------------------------------------------------
-# Extract a subtitle from the HTML
-# ------------------------------------------------------------
-
-extract_subtitle <- function(html_path) {
-
-  x <- tryCatch(
-    readLines(
-      html_path,
-      warn = FALSE,
-      encoding = "UTF-8"
+  sprintf(
+    paste0(
+      '<div class="g-col-12 g-col-md-6 g-col-lg-4">\n',
+      '  <div class="card season-card">\n',
+      '    <div class="season-card-media">\n',
+      '      <img src="%s" class="card-img-top img-fluid" alt="%s thumbnail">\n',
+      '    </div>\n',
+      '    <div class="card-body">\n',
+      '      <h3><a href="%s">%s</a></h3>\n',
+      '      <div class="text-muted">Browse dashboards &amp; visuals</div>\n',
+      '    </div>\n',
+      '  </div>\n',
+      '</div>\n'
     ),
-    error = function(e) character(0)
+    thumb, comp, url, comp
   )
-
-  if (!length(x)) {
-    return("Open dashboard")
-  }
-
-  txt <- paste(
-    x,
-    collapse = "\n"
-  )
-
-
-  # Try the HTML title
-  m <- regexpr(
-    "(?is)<title>\\s*([^<]+?)\\s*</title>",
-    txt,
-    perl = TRUE
-  )
-
-  if (m[1] != -1) {
-
-    title <- sub(
-      "(?is).*<title>\\s*([^<]+?)\\s*</title>.*",
-      "\\1",
-      regmatches(txt, m),
-      perl = TRUE
-    )
-
-    title <- gsub(
-      "\\s*\\|\\s*.*$",
-      "",
-      title
-    )
-
-    title <- gsub(
-      "\\s*-\\s*Quarto$",
-      "",
-      title
-    )
-
-    title <- trimws(title)
-
-    if (nzchar(title)) {
-      return(title)
-    }
-  }
-
-
-  # Fallback to first H1
-  m2 <- regexpr(
-    "(?is)<h1[^>]*>\\s*([^<]+?)\\s*</h1>",
-    txt,
-    perl = TRUE
-  )
-
-  if (m2[1] != -1) {
-
-    h1 <- sub(
-      "(?is).*<h1[^>]*>\\s*([^<]+?)\\s*</h1>.*",
-      "\\1",
-      regmatches(txt, m2),
-      perl = TRUE
-    )
-
-    h1 <- trimws(h1)
-
-    if (nzchar(h1)) {
-      return(h1)
-    }
-  }
-
-
-  if (
-    grepl(
-      "Match Previews",
-      html_path,
-      ignore.case = TRUE
-    )
-  ) {
-    return("Open Premier League match previews")
-  }
-
-  "Open dashboard"
-}
-
-
-# ------------------------------------------------------------
-# Build dashboard cards
-# ------------------------------------------------------------
-
-cards <- vapply(
-  md_dirs,
-  function(md) {
-
-    full_html_path <- find_dashboard_html(
-      md,
-      base_dir
-    )
-
-    if (is.na(full_html_path)) {
-      return(NA_character_)
-    }
-
-
-    # Build relative link
-    if (tolower(trimws(md)) == "match previews") {
-
-      rel_path <- file.path(
-        md,
-        "index.html"
-      )
-
-    } else {
-
-      docs_dir <- find_docs_dir(
-        md,
-        base_dir
-      )
-
-      rel_path <- file.path(
-        md,
-        basename(docs_dir),
-        basename(full_html_path)
-      )
-    }
-
-    rel_path <- gsub(
-      "\\\\",
-      "/",
-      rel_path
-    )
-    
-    # Get thumbnail
-    thumb <- pick_md_thumb(
-      md,
-      base_dir
-    )
-    
-    thumb_url <- clean_web_path(
-  thumb
-  )
-        
-   # Build dashboard URL
-    url <- clean_web_path(
-  rel_path
-  )
-
-    # Get subtitle
-    subtitle <- extract_subtitle(
-      full_html_path
-    )
-
-
-    # Build card
-    sprintf(
-      paste0(
-        '<div class="g-col-12 g-col-md-6 g-col-lg-4">\n',
-        '  <div class="card season-card">\n',
-        '    <div class="season-card-media">\n',
-        '      <img src="%s" class="card-img-top img-fluid" alt="%s thumbnail">\n',
-        '    </div>\n',
-        '    <div class="card-body">\n',
-        '      <h3><a href="%s">%s</a></h3>\n',
-        '      <div class="text-muted">%s</div>\n',
-        '    </div>\n',
-        '  </div>\n',
-        '</div>\n'
-      ),
-      thumb_url,
-      htmltools::htmlEscape(md),
-      url,
-      htmltools::htmlEscape(md),
-      htmltools::htmlEscape(subtitle)
-    )
-
-  },
-  character(1)
-)
-
-
-# Remove folders without a valid page
-cards <- cards[
-  !is.na(cards)
-]
-
-
-# ------------------------------------------------------------
-# Output dashboard grid
-# ------------------------------------------------------------
+}, character(1))
 
 output <- paste0(
   '<div class="grid">\n',
-  paste(
-    cards,
-    collapse = "\n"
-  ),
+  paste(cards, collapse = "\n"),
   "\n</div>\n"
 )
 
