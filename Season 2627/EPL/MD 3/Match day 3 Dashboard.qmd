@@ -93,10 +93,10 @@ Color_Away <- paste("#8B1A1A")
 Color_Away_Text <- paste("#FFFFFF")
 
 #set Away color
-Color_Home <- paste("dodgerblue4")
+Color_Home <- paste("blue")
 
 #set Away text
-Color_Home_Text <- paste("#FFFFFF")
+Color_Home_Text <- paste("white")
 
 #####################
 #load fonts
