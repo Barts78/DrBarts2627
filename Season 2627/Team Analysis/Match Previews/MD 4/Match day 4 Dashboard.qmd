@@ -67,13 +67,13 @@ library(rlang)
 
 ###############
 #set away
-Match_Away <- paste0("Liverpool")
+Match_Away <- paste0("Crystal Palace")
 
 #Set Home
-Match_Home <- paste0("Ipswich")
+Match_Home <- paste0("Fulham")
 
 #set match date
-Game_date <- paste("04-09-2026")
+Game_date <- paste("05-09-2026")
 
 #set Game name
 GameName <- paste0(Match_Home," vs ", Match_Away)
@@ -87,13 +87,13 @@ DataBaseName <- paste0("EPLComp_LFC_Games_2627")
 ######################
 #set colours
 #set Home color
-Color_Away <- paste("#8B1A1A")
+Color_Away <- paste("red")
 
 #set home text color
-Color_Away_Text <- paste("#FFFFFF")
+Color_Away_Text <- paste("blue")
 
 #set Away color
-Color_Home <- paste("blue")
+Color_Home <- paste("black")
 
 #set Away text
 Color_Home_Text <- paste("white")
