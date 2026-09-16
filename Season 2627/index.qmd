@@ -67,6 +67,7 @@ Support the show and get access to exclusive previews, bonus podcasts and additi
 #| echo: false
 #| message: false
 #| results: asis
+#| warnings: false
 
 base_dir <- "."
 
