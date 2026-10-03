@@ -1,6 +1,6 @@
 ---
 title: "Dr Barts"
-subtitle: "Team Analysis"
+subtitle: "Season Trends"
 image: Images/Social_profile.png
 
 format:
@@ -61,7 +61,8 @@ Support the show and get access to exclusive previews, bonus podcasts and additi
 
 </div>
 ::::
-## Browse Special or Preview
+## Browse by Special
+
 
 ```{r}
 #| echo: false
