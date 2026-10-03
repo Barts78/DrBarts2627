@@ -70,103 +70,122 @@ Support the show and get access to exclusive previews, bonus podcasts and additi
 
 base_dir <- "."
 
-md_dirs <- list.dirs(base_dir, recursive = FALSE, full.names = FALSE)
-md_dirs <- md_dirs[!grepl("^\\.", md_dirs)]
-md_dirs <- md_dirs[md_dirs != "index_files"]
-md_dirs <- sort(md_dirs)
+# ------------------------------------------------------------
+# Sections in display order
+# ------------------------------------------------------------
 
-links <- vapply(md_dirs, function(name) {
-  docs <- file.path(base_dir, name, "Docs")
-  if (!dir.exists(docs)) return(NA_character_)
-  html <- list.files(docs, pattern = "\\.html$", full.names = FALSE)
-  if (length(html) == 0) return(NA_character_)
-  html <- sort(html)[1]
+section_dirs <- c(
+  "Season Trends",
+  "Match Previews",
+  "Specials"
+)
 
-  path <- file.path(name, "docs", html)
-  path <- gsub("\\\\", "/", path)
-  url <- utils::URLencode(path)
-  sprintf("- [%s](%s)", name, url)
-}, character(1))
+# ------------------------------------------------------------
+# Thumbnails
+# ------------------------------------------------------------
 
-links <- links[!is.na(links)]
-#cat(paste(links, collapse = "\n"), "\n")
+section_thumbs <- c(
+  "Season Trends"  = "Images/Premier-league-ball.png",
+  "Match Previews" = "Images/Premier-league-ball.png",
+  "Specials"       = "Images/Premier-league-ball.png"
+)
 
-default_thumb <- "Images/Premier-league-ball.png"
+# ------------------------------------------------------------
+# Descriptions
+# ------------------------------------------------------------
 
-pick_md_thumb <- function(md, base_dir = ".") {
+section_descriptions <- c(
+  "Season Trends" =
+    "Explore season-wide trends, team performance and league analysis.",
 
-  # extract MD number (e.g. "MD 12" -> 12)
-  md_num <- sub("^CLMD\\s+", "", md)
+  "Match Previews" =
+    "Match-by-match previews, opposition analysis and key performance indicators.",
 
-  thumb_path <- file.path(
-    base_dir,
-    md,
-    "docs",
-    paste0("-International-break-", md_num, "-Dashboard_files"),
-    "figure-html",
-    "Match Result Probablity Plot-1.png"
-  )
+  "Specials" =
+    "Special reports and standalone football analysis."
+)
 
-  thumb_path <- gsub("\\\\", "/", thumb_path)
+# ------------------------------------------------------------
+# Find target
+#
+# Season Trends:
+#   Link DIRECTLY to its dashboard HTML.
+#
+# Match Previews / Specials:
+#   Link to their folder/index.
+# ------------------------------------------------------------
 
-  if (file.exists(thumb_path)) {
-    thumb_path
-  } else {
-    "Images/champions-league-ball.png"   # fallback
+find_target <- function(section) {
+
+  section_path <- file.path(base_dir, section)
+
+  if (!dir.exists(section_path)) {
+    return(NULL)
   }
+
+  # ---- SEASON TRENDS: direct dashboard link ----
+
+  if (section == "Season Trends") {
+
+    docs_dir <- file.path(section_path, "docs")
+
+    if (!dir.exists(docs_dir)) {
+      return(NULL)
+    }
+
+    html_files <- list.files(
+      docs_dir,
+      pattern = "\\.html$",
+      full.names = FALSE
+    )
+
+    if (length(html_files) == 0) {
+      return(NULL)
+    }
+
+    # Same behaviour as a normal matchday dashboard
+    html_file <- sort(html_files)[1]
+
+    return(
+      file.path(
+        section,
+        "docs",
+        html_file
+      )
+    )
+  }
+
+  # ---- MATCH PREVIEWS / SPECIALS ----
+
+  # If rendered index.html exists
+  index_html <- file.path(section_path, "index.html")
+
+  if (file.exists(index_html)) {
+    return(file.path(section, "index.html"))
+  }
+
+  # Otherwise link to folder
+  paste0(section, "/")
 }
 
-# Extract a nice subtitle from the HTML itself
-extract_subtitle <- function(html_path) {
-  x <- tryCatch(readLines(html_path, warn = FALSE, encoding = "UTF-8"), error = function(e) character(0))
-  if (!length(x)) return("Open matchday dashboard")
+# ------------------------------------------------------------
+# Create cards
+# ------------------------------------------------------------
 
-  txt <- paste(x, collapse = "\n")
+cards <- vapply(section_dirs, function(section) {
 
-  # 1) <title>...</title>
-  m <- regexpr("(?is)<title>\\s*([^<]+?)\\s*</title>", txt, perl = TRUE)
-  if (m[1] != -1) {
-    title <- sub("(?is).*<title>\\s*([^<]+?)\\s*</title>.*", "\\1", regmatches(txt, m), perl = TRUE)
+  target <- find_target(section)
 
-    # Clean common suffixes
-    title <- gsub("\\s*\\|\\s*.*$", "", title)         # remove "| Site Name"
-    title <- gsub("\\s*-\\s*Quarto$", "", title)       # remove "- Quarto"
-    title <- trimws(title)
-
-    if (nzchar(title)) return(title)
+  if (is.null(target)) {
+    return(NA_character_)
   }
 
-  # 2) Fallback: first <h1>...</h1>
-  m2 <- regexpr("(?is)<h1[^>]*>\\s*([^<]+?)\\s*</h1>", txt, perl = TRUE)
-  if (m2[1] != -1) {
-    h1 <- sub("(?is).*<h1[^>]*>\\s*([^<]+?)\\s*</h1>.*", "\\1", regmatches(txt, m2), perl = TRUE)
-    h1 <- trimws(h1)
-    if (nzchar(h1)) return(h1)
-  }
+  # Clean URL
+  target <- gsub("\\\\", "/", target)
+  url <- utils::URLencode(target)
 
-  "Open Specials dashboard"
-}
-
-cards <- vapply(md_dirs, function(md) {
-
-  docs_dir <- file.path(base_dir, md, "docs")
-  if (!dir.exists(docs_dir)) return(NA_character_)
-
-  html_files <- list.files(docs_dir, pattern = "\\.html$", full.names = FALSE)
-  if (length(html_files) == 0) return(NA_character_)
-
-  html_file <- sort(html_files)[1]
-
-  # Link URL (relative)
-  rel_path <- file.path(md, "docs", html_file)
-  rel_path <- gsub("\\\\", "/", rel_path)
-  url <- utils::URLencode(rel_path)
-
-  # Subtitle from HTML contents
-  full_html_path <- file.path(docs_dir, html_file)
-  subtitle <- extract_subtitle(full_html_path)
-
-  thumb <- pick_md_thumb(md)
+  thumb <- section_thumbs[[section]]
+  description <- section_descriptions[[section]]
 
   sprintf(
     paste0(
@@ -182,16 +201,25 @@ cards <- vapply(md_dirs, function(md) {
       '  </div>\n',
       '</div>\n'
     ),
-    thumb, md, url, md, htmltools::htmlEscape(subtitle)
+    thumb,
+    section,
+    url,
+    section,
+    description
   )
+
 }, character(1))
 
 cards <- cards[!is.na(cards)]
 
+# ------------------------------------------------------------
+# Output
+# ------------------------------------------------------------
+
 output <- paste0(
   '<div class="grid">\n',
   paste(cards, collapse = "\n"),
-  "\n</div>\n"
+  '\n</div>\n'
 )
 
 knitr::asis_output(output)
