@@ -61,7 +61,7 @@ Support the show and get access to exclusive previews, bonus podcasts and additi
 
 </div>
 ::::
-## Browse by Competition
+## Browse by Competition Season 2627
 
 ```{r}
 #| echo: false
@@ -104,11 +104,11 @@ thumb_map <- c(
   "FA Cup"     = "Images/FA_Cup.png",
   "CL"         = "Images/UCL.png",
   "League Cup" = "Images/League_cup.png",
-  "Specials"   = "Images/Premier-League-ball.png",
+  "Specials"   = "Images/Premier-League_Reactivity-Ball.png",
   "Player Analysis"    = "Images/Players.png"
 )
 
-default_thumb <- "Images/Premier-League-ball.png"
+default_thumb <- "Images/Premier-League_Reactivity-Ball.png"
 
 pick_thumb <- function(name) {
   thumb <- unname(thumb_map[name])

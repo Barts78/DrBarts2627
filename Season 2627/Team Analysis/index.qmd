@@ -85,9 +85,9 @@ section_dirs <- c(
 # ------------------------------------------------------------
 
 section_thumbs <- c(
-  "Season Trends"  = "Images/Premier-League-ball.png",
-  "Match Previews" = "Images/Premier-League-ball.png",
-  "Specials"       = "Images/Premier-League-ball.png"
+  "Season Trends"  = "Images/Premier-League_Reactivity-Ball.png",
+  "Match Previews" = "Images/Premier-League_Reactivity-Ball.png",
+  "Specials"       = "Images/champions-league-ball.png"
 )
 
 # ------------------------------------------------------------
