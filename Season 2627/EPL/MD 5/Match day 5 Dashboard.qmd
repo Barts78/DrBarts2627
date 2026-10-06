@@ -116,7 +116,8 @@ Playerdata <- read_xlsx(PlayerfileName)
 
 #load season data
 fileName <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/WhoScored/Databases/", DataBaseName, ".xlsx")
-SeasonData <- read_xlsx(fileName)
+SeasonData <- read_xlsx(fileName) %>%
+  filter(homeTeam == "Liverpool" | awayTeam == "Liverpool")
 
 #add in team group to data base
 SeasonData <- SeasonData %>%
