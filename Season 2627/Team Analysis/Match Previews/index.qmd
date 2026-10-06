@@ -85,14 +85,23 @@ pick_md_thumb <- function(md, base_dir = ".") {
   # extract MD number (e.g. "MD 12" -> 12)
   md_num <- sub("^MD\\s+", "", md)
 
-  thumb_path <- file.path(
-    base_dir,
-    md,
-    "docs",
-    paste0("Match-day-", md_num, "-Dashboard_files"),
-    "figure-html",
-    "Match Result Probablity Plot-1.png"
-  )
+# Find the dashboard folder regardless of capitalisation
+folder_pattern <- paste0(
+  "^match-day-", md_num, "-dashboard_files$"
+)
+
+figure_folder <- list.files(
+  file.path(base_dir, md, "docs"),
+  pattern = folder_pattern,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+
+thumb_path <- file.path(
+  figure_folder,
+  "figure-html",
+  "Match Result Probablity Plot-1.png"
+)
 
   thumb_path <- gsub("\\\\", "/", thumb_path)
 
