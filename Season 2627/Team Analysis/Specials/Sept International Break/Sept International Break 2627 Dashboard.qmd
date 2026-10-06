@@ -1760,7 +1760,10 @@ My_caption <- paste0(my_socials)
 #load in data frames
 
 fileName <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/WhoScored/Databases/", GameName, ".xlsx")
-plottingData <- read_xlsx(fileName)
+#plottingData <- read_xlsx(fileName)
+
+plottingData <- read_xlsx(fileName) %>%
+  filter(homeTeam == Match_Home | awayTeam == Match_Home)
 
 #set summary values
 Total_EPV <- sum(plottingData$Cumalative_EPV)
