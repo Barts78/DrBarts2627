@@ -415,3 +415,32 @@ hr {
   background: #f7f7f4 !important;
   border-color: #f7f7f4 #f7f7f4 #f4b51b !important;
 }
+/* =========================================================
+   V4 — remove big gaps between visualisations
+   Quarto's scrolling dashboard gives every row a fixed height
+   and draws plots with object-fit: contain, so wide plots get
+   letterboxed with empty space above/below. Let cards and
+   images size to their content instead.
+   ========================================================= */
+.quarto-dashboard .bslib-grid {
+  grid-auto-rows: auto !important;
+  grid-template-rows: none !important;
+}
+
+.quarto-dashboard .card,
+.quarto-dashboard .bslib-grid > *,
+.quarto-dashboard .card-body,
+.quarto-dashboard .tab-content,
+.quarto-dashboard .tab-pane,
+.quarto-dashboard .cell-output-display {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  flex: 0 0 auto !important;
+}
+
+.quarto-dashboard .cell-output-display img {
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+}
