@@ -3478,6 +3478,477 @@ plot_momentum <- function(df, title, subtitle, ylab, home_lab, away_lab, share =
 }
 ```
 
+```{r}
+#| label: enhancement setup
+#| output: false
+
+# ===============================================================
+# Event sequences + helpers for the set-piece, shot-sequence, entry,
+# transition, defensive-shape, PPDA, substitution and goalkeeper
+# sections. Opta coordinates (0-100), each team attacking left to right.
+# Definitions are written up on the Methodology page.
+# ===============================================================
+
+# ---- small helpers ------------------------------------------------
+num0 <- function(df, col) {
+  if (col %in% names(df)) coalesce(suppressWarnings(as.numeric(df[[col]])), 0) else rep(0, nrow(df))
+}
+numNA <- function(df, col) {
+  if (col %in% names(df)) suppressWarnings(as.numeric(df[[col]])) else rep(NA_real_, nrow(df))
+}
+has_qual <- function(df, code) {
+  qc <- grep("^qualifiers/\\d+/type/value$", names(df), value = TRUE)
+  if (length(qc) == 0) return(rep(FALSE, nrow(df)))
+  Reduce(`|`, lapply(qc, function(cl) coalesce(suppressWarnings(as.numeric(df[[cl]])) == code, FALSE)))
+}
+opp_of     <- function(team) ifelse(team == Match_Home, Match_Away, Match_Home)
+team_col   <- function(team) ifelse(team == Match_Home, Color_Home, Color_Away)
+team_txt   <- function(team) ifelse(team == Match_Home, Color_Home_Text, Color_Away_Text)
+team_cols  <- setNames(c(Color_Home, Color_Away), c(Match_Home, Match_Away))
+team_scale <- function(team) c("#FFFAFA", team_col(team))   # snow -> team colour, for gt_color_rows
+# dashboard standard: blue = successful / better, red = unsuccessful / worse
+col_success <- "#0000FF"
+col_fail    <- "#BD1100"
+# team-coloured facet strips (one team per plot)
+team_strip <- function(team) {
+  theme(strip.text = element_text(face = "bold", size = 8, colour = team_txt(team)),
+        strip.background = element_rect(fill = team_col(team), color = "black", linetype = "solid", linewidth = 1))
+}
+pct_txt    <- function(a, b) ifelse(b > 0, paste0(round(100 * a / b), "%"), "-")
+channel_levels <- c("Left wing", "Left half-space", "Central", "Right half-space", "Right wing")
+channel_of <- function(y) {
+  factor(case_when(y >= 78.9 ~ "Left wing", y >= 63.2 ~ "Left half-space", y >= 36.8 ~ "Central",
+                   y >= 21.1 ~ "Right half-space", TRUE ~ "Right wing"), levels = channel_levels)
+}
+third_of <- function(x) case_when(x >= 66.7 ~ "Att third", x >= 33.3 ~ "Mid third", TRUE ~ "Def third")
+in_box   <- function(x, y) coalesce(x >= 83 & y >= 21.1 & y <= 78.9, FALSE)
+quarter_levels <- c("1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter", "Injury Time")
+
+# styled gt used by the new tables (matches the summary tables)
+ai_gt <- function(df, title, subtitle = Match_Fixture, group = NULL, rowname = NULL) {
+  gt(df, groupname_col = group, rowname_col = rowname) %>%
+    tab_header(title = md(paste0("**", title, "**")), subtitle = subtitle) %>%
+    tab_source_note(gt_caption) %>%
+    cols_align(align = "right", columns = everything()) %>%
+    sub_missing(missing_text = "-") %>%
+    tab_options(heading.padding = px(1), heading.align = "left",
+                column_labels.background.color = "#DBDBDB",
+                row_group.background.color = "ivory4",
+                stub.background.color = "#DBDBDB",
+                column_labels.border.bottom.color = "black",
+                table.font.size = 13, heading.title.font.size = 16,
+                heading.subtitle.font.size = 13, source_notes.font.size = 8,
+                table.width = "100%") %>%
+    tab_style(locations = cells_title(groups = "title"),
+              style = list(cell_text(weight = "bold", size = 16)))
+}
+# colour team row groups / spanners when present
+gt_team_groups <- function(tbl, groups) {
+  for (tm in intersect(c(Match_Home, Match_Away), groups)) {
+    tbl <- tbl %>% tab_style(style = list(cell_text(weight = "bold", color = team_txt(tm)),
+                                          cell_fill(color = team_col(tm))),
+                             locations = cells_row_groups(groups = tm))
+  }
+  tbl
+}
+gt_team_spanners <- function(tbl) {
+  for (tm in c(Match_Home, Match_Away)) {
+    tbl <- tbl %>% tab_spanner(label = tm, id = tm, columns = starts_with(paste0(tm, " | "))) %>%
+      tab_style(style = list(cell_text(weight = "bold", color = team_txt(tm)), cell_fill(color = team_col(tm))),
+                locations = cells_column_spanners(spanners = tm))
+  }
+  tbl %>% cols_label_with(columns = contains(" | "), fn = function(n) sub("^.* \\| ", "", n))
+}
+
+# ---- event table in match order -------------------------------------
+ev <- plottingData %>%
+  mutate(.row = row_number()) %>%
+  filter(period < 5) %>%
+  arrange(period, .row)
+
+ev <- ev %>%
+  mutate(
+    tv        = num0(ev, "type/value"),
+    out       = num0(ev, "outcomeType/value"),
+    sec       = coalesce(as.numeric(minute), 0) * 60 + num0(ev, "second"),
+    OG        = num0(ev, "Own_Goals") == 1,
+    # all passes incl. throw-ins, corners and offside passes (Attempted_Passes
+    # leaves some set-piece passes out)
+    is_pass   = tv %in% c(1, 2),
+    is_shot   = num0(ev, "TotalShots") == 1 & !OG,
+    on_target = num0(ev, "OTShots") == 1,
+    is_cross  = num0(ev, "Cross_Passes") == 1,
+    is_long   = num0(ev, "Long_Passes") == 1,
+    da        = num0(ev, "Defensive_Action") == 1,
+    ft_touch  = num0(ev, "Final_Third_Touches") == 1,
+    xg        = num0(ev, "xG"),
+    xgot      = num0(ev, "xGOT"),
+    epv       = num0(ev, "EPVvalue"),
+    x         = numNA(ev, "x"),
+    y         = numNA(ev, "y"),
+    end_x     = numNA(ev, "finalX"),
+    end_y     = numNA(ev, "finalY"),
+    dist_m    = sqrt(((end_x - x) * 1.05)^2 + ((end_y - y) * 0.68)^2),
+    short_flag = num0(ev, "Short_Corners") == 1,
+    corner    = is_pass & (num0(ev, "Corners") == 1 | short_flag | has_qual(ev, 6)),
+    free_kick = is_pass & !corner & (num0(ev, "FreeKicks") == 1 | has_qual(ev, 5)),
+    throw_in  = is_pass & has_qual(ev, 107),
+    goal_kick = is_pass & has_qual(ev, 124),
+    kick_off  = is_pass & has_qual(ev, 279),
+    dead_ball = corner | free_kick | throw_in | goal_kick | kick_off,
+    pen       = is_shot & has_qual(ev, 9),
+    blocked   = is_shot & has_qual(ev, 82),
+    sit       = if ("situation" %in% names(ev)) as.character(situation) else NA_character_,
+    # events where a team has the ball - a change of team starts a new sequence
+    on_ball   = is_pass | is_shot | tv %in% c(3, 8, 49, 52, 54, 61) |
+                (tv %in% c(7, 11) & out == 1),
+    # PPDA defensive actions: tackles, interceptions, challenges, fouls committed
+    ppda_da   = tv %in% c(7, 8, 45) | (tv == 4 & out == 0)
+  )
+
+# ---- sequences: new one when the team on the ball changes, the period
+#      changes, or play restarts from a dead ball ---------------------
+seq_ids <- ev %>%
+  filter(on_ball) %>%
+  mutate(new_seq = row_number() == 1 |
+                   coalesce(TeamName != dplyr::lag(TeamName), TRUE) |
+                   coalesce(period != dplyr::lag(period), TRUE) | dead_ball,
+         seq_id = cumsum(new_seq)) %>%
+  select(.row, seq_id)
+
+ev <- ev %>%
+  left_join(seq_ids, by = ".row") %>%
+  tidyr::fill(seq_id, .direction = "down") %>%
+  group_by(seq_id) %>%
+  mutate(cum_passes = cumsum(is_pass & on_ball)) %>%
+  ungroup()
+
+seqs <- ev %>%
+  filter(on_ball, !is.na(seq_id)) %>%
+  group_by(seq_id) %>%
+  summarise(TeamName = dplyr::first(TeamName), period = dplyr::first(period),
+            start_row = dplyr::first(.row), start_sec = dplyr::first(sec), start_min = dplyr::first(expandedMinute),
+            start_x = dplyr::first(x), start_y = dplyr::first(y), starter = dplyr::first(playerId),
+            start_tv = dplyr::first(tv), s_corner = dplyr::first(corner), s_fk = dplyr::first(free_kick),
+            s_throw = dplyr::first(throw_in), s_gk = dplyr::first(goal_kick), s_ko = dplyr::first(kick_off),
+            n_events = n(), .groups = "drop") %>%
+  mutate(start_type = case_when(s_corner ~ "Corner", s_fk ~ "Free kick", s_throw ~ "Throw-in",
+                                s_gk ~ "Goal kick", s_ko ~ "Kick-off",
+                                start_tv %in% c(10, 11, 52, 54) ~ "Keeper",
+                                TRUE ~ "Open-play regain"),
+         start_zone = paste0(third_of(start_x), ", ", channel_of(start_y)))
+
+# ---- shots joined back to their sequence ---------------------------
+shot_class <- function(sit, start_type, pen) {
+  s <- tolower(coalesce(sit, ""))
+  case_when(pen | grepl("pen", s) ~ "Penalty",
+            grepl("corner|set ?piece|free ?kick|throw", s) ~ "Set piece",
+            s %in% c("", "na") & start_type %in% c("Corner", "Free kick", "Throw-in") ~ "Set piece",
+            TRUE ~ "Open play")
+}
+
+shot_seq <- ev %>%
+  filter(is_shot) %>%
+  select(.row, seq_id, TeamName, playerId, expandedMinute, minute, period, sec,
+         shot_x = x, shot_y = y, xg, xgot, tv, pen, blocked, on_target, sit, cum_passes) %>%
+  left_join(seqs %>% select(seq_id, start_sec, start_x, start_y, starter, start_type, start_zone),
+            by = "seq_id") %>%
+  mutate(Shooter  = short_name(playerId),
+         Starter  = short_name(starter),
+         Duration = pmax(0, round(sec - start_sec)),
+         Passes   = cum_passes,
+         Goal     = tv == 16,
+         Result   = case_when(tv == 16 ~ "Goal", blocked ~ "Blocked", tv == 15 ~ "Saved",
+                              tv == 14 ~ "Post", TRUE ~ "Off target"),
+         Class    = shot_class(sit, start_type, pen),
+         Min      = fmt_match_minute(minute, period))
+
+# ---- set pieces ----------------------------------------------------
+ev_idx <- setNames(seq_len(nrow(ev)), ev$.row)
+contact_cand <- ev$on_ball | ev$tv %in% c(4, 7, 8, 10, 11, 12, 41, 44, 45, 74)
+
+# team that makes the first contact after a delivery (aerial duels go to
+# the winner); NA if the ball goes out / play stops before anyone touches it
+first_contact_team <- function(r) {
+  i <- ev_idx[[as.character(r)]]
+  if (i >= nrow(ev)) return(NA_character_)
+  j <- (i + 1):min(i + 6, nrow(ev))
+  j <- j[coalesce(ev$period[j] == ev$period[i] & (ev$sec[j] - ev$sec[i]) <= 8, FALSE)]
+  stop_at <- which(ev$tv[j] %in% c(5, 6) | ev$dead_ball[j])
+  if (length(stop_at)) j <- j[seq_len(stop_at[1] - 1)]
+  j <- j[contact_cand[j]]
+  if (length(j) == 0) return(NA_character_)
+  if (ev$tv[j[1]] == 44) {
+    a <- j[ev$tv[j] == 44 & ev$out[j] == 1]
+    if (length(a)) return(as.character(ev$TeamName[a[1]]))
+  }
+  as.character(ev$TeamName[j[1]])
+}
+
+sp_events <- ev %>%
+  filter(corner | free_kick | throw_in) %>%
+  mutate(sp_type  = case_when(corner ~ "Corner", free_kick ~ "Free kick", TRUE ~ "Throw-in"),
+         short    = corner & (short_flag | coalesce(dist_m < 20, FALSE)),
+         delivery = case_when(sp_type == "Corner" & short ~ "Short corner",
+                              sp_type == "Corner" ~ "Direct corner",
+                              in_box(end_x, end_y) ~ "Into box",
+                              coalesce(end_x >= 66.7, FALSE) ~ "Into final third",
+                              TRUE ~ "Other"),
+         contact_team  = vapply(.row, first_contact_team, character(1)),
+         First_Contact = case_when(is.na(contact_team) ~ "No contact",
+                                   contact_team == TeamName ~ "Won", TRUE ~ "Lost"),
+         Taker = short_name(playerId))
+
+sp_summary_team <- function(team) {
+  s  <- sp_events %>% filter(TeamName == team)
+  co <- s %>% filter(sp_type == "Corner")
+  dc <- co %>% filter(delivery == "Direct corner")
+  fk <- s %>% filter(sp_type == "Free kick")
+  ti <- s %>% filter(sp_type == "Throw-in")
+  sh <- shot_seq %>% filter(TeamName == team)
+  cls <- function(k, f) { d <- sh %>% filter(Class == k); f(d) }
+  tibble(
+    Section = c(rep("Corners", 4), rep("Free kicks", 3), rep("Throw-ins", 2),
+                rep("Shots by situation", 9)),
+    Metric = c("Corners taken", "Short", "Direct", "Direct - first contact won",
+               "Free kicks (passes)", "Into final third / box", "Into box",
+               "Throw-ins", "Retained (first touch)",
+               "Open-play shots", "Open-play xG", "Open-play goals",
+               "Set-piece shots", "Set-piece xG", "Set-piece goals",
+               "Penalties", "Penalty xG", "Set-piece share of xG"),
+    Value = c(nrow(co), sum(co$short), nrow(dc),
+              paste0(sum(dc$First_Contact == "Won"), " (", pct_txt(sum(dc$First_Contact == "Won"), nrow(dc)), ")"),
+              nrow(fk), sum(fk$delivery %in% c("Into box", "Into final third")), sum(fk$delivery == "Into box"),
+              nrow(ti), pct_txt(sum(ti$First_Contact == "Won"), nrow(ti)),
+              cls("Open play", nrow), format(round(cls("Open play", function(d) sum(d$xg)), 2), nsmall = 2), cls("Open play", function(d) sum(d$Goal)),
+              cls("Set piece", nrow), format(round(cls("Set piece", function(d) sum(d$xg)), 2), nsmall = 2), cls("Set piece", function(d) sum(d$Goal)),
+              cls("Penalty", nrow), format(round(cls("Penalty", function(d) sum(d$xg)), 2), nsmall = 2),
+              pct_txt(cls("Set piece", function(d) sum(d$xg)), sum(sh$xg))) %>% as.character()
+  )
+}
+sp_summary <- sp_summary_team(Match_Home) %>%
+  dplyr::rename(!!Match_Home := Value) %>%
+  left_join(sp_summary_team(Match_Away) %>% dplyr::rename(!!Match_Away := Value), by = c("Section", "Metric"))
+
+# ---- carries: the ball moved between receiving it (end of the previous
+#      same-team event) and the next action, within one sequence, 5m+ ----
+carries <- ev %>%
+  filter(on_ball) %>%
+  mutate(prev_ok = dplyr::lag(is_pass & out == 1),
+         c_x = ifelse(coalesce(prev_ok, FALSE), dplyr::lag(end_x), dplyr::lag(x)),
+         c_y = ifelse(coalesce(prev_ok, FALSE), dplyr::lag(end_y), dplyr::lag(y)),
+         same_seq = coalesce(seq_id == dplyr::lag(seq_id), FALSE) & !dead_ball,
+         c_dist = sqrt(((x - c_x) * 1.05)^2 + ((y - c_y) * 0.68)^2)) %>%
+  filter(same_seq, coalesce(c_dist >= 5, FALSE)) %>%
+  transmute(.row, TeamName, playerId, period, x = c_x, y = c_y, end_x = x, end_y = y,
+            Kind = "Carry", Success = TRUE)
+
+# ---- box and final-third entries (open play) ----------------------
+entries <- bind_rows(
+  ev %>% filter(is_pass, !dead_ball) %>%
+    transmute(.row, TeamName, playerId, period, x, y, end_x, end_y, Kind = "Pass", Success = out == 1),
+  carries
+) %>%
+  filter(!is.na(x), !is.na(end_x)) %>%
+  mutate(box_entry = !in_box(x, y) & in_box(end_x, end_y),
+         ft_entry  = x < 66.7 & end_x >= 66.7,
+         Channel   = channel_of(y)) %>%
+  filter(box_entry | ft_entry)
+
+entry_summary <- function(d, flag) {
+  d %>% filter(.data[[flag]]) %>%
+    group_by(TeamName, Channel, .drop = FALSE) %>%
+    summarise(Passes = sum(Kind == "Pass"), Carries = sum(Kind == "Carry"),
+              Total = n(), Succ = sum(Success), .groups = "drop")
+}
+entry_table <- bind_rows(
+  entry_summary(entries %>% mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))), "box_entry") %>% mutate(Type = "Box"),
+  entry_summary(entries %>% mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))), "ft_entry")  %>% mutate(Type = "Final third")
+) %>%
+  mutate(TeamName = as.character(TeamName), Channel = as.character(Channel))
+entry_table <- bind_rows(
+  entry_table,
+  entry_table %>% group_by(TeamName, Type) %>%
+    summarise(across(c(Passes, Carries, Total, Succ), sum), .groups = "drop") %>%
+    mutate(Channel = "Total")
+) %>%
+  mutate(`Success %` = ifelse(Total > 0, round(100 * Succ / Total), NA)) %>%
+  select(-Succ) %>%
+  pivot_wider(names_from = Type, values_from = c(Passes, Carries, Total, `Success %`),
+              names_glue = "{Type} | {.value}", values_fill = 0) %>%
+  mutate(Channel = factor(Channel, levels = c(channel_levels, "Total"))) %>%
+  arrange(factor(TeamName, levels = c(Match_Home, Match_Away)), Channel) %>%
+  mutate(Channel = as.character(Channel)) %>%
+  select(TeamName, Channel, starts_with("Box | "), starts_with("Final third | "))
+
+# ---- transitions --------------------------------------------------
+regain_seqs <- seqs %>% filter(start_type == "Open-play regain")
+regain_shots <- shot_seq %>% filter(start_type == "Open-play regain")
+fast_window <- 15   # seconds
+
+transition_team <- function(team) {
+  rs <- regain_seqs %>% filter(TeamName == team)
+  sh <- regain_shots %>% filter(TeamName == team)
+  fs <- sh %>% filter(Duration <= fast_window)
+  oc <- regain_shots %>% filter(TeamName == opp_of(team), Duration <= fast_window)
+  first_shot <- sh %>% group_by(seq_id) %>% summarise(t = min(Duration), .groups = "drop")
+  tibble(
+    Metric = c("Open-play regains", "Regains in attacking third", "Regains leading to a shot",
+               paste0("Shots within ", fast_window, "s of regain"), paste0("xG within ", fast_window, "s"),
+               paste0("Goals within ", fast_window, "s"), "Median time regain to shot (s)",
+               paste0("Shots conceded within ", fast_window, "s of losing ball"),
+               paste0("xG conceded within ", fast_window, "s"), paste0("Goals conceded within ", fast_window, "s")),
+    Value = c(nrow(rs), sum(rs$start_x >= 66.7, na.rm = TRUE), n_distinct(sh$seq_id),
+              nrow(fs), format(round(sum(fs$xg), 2), nsmall = 2), sum(fs$Goal),
+              if (nrow(first_shot)) round(median(first_shot$t)) else "-",
+              nrow(oc), format(round(sum(oc$xg), 2), nsmall = 2), sum(oc$Goal)) %>% as.character()
+  )
+}
+transition_summary <- transition_team(Match_Home) %>% dplyr::rename(!!Match_Home := Value) %>%
+  left_join(transition_team(Match_Away) %>% dplyr::rename(!!Match_Away := Value), by = "Metric")
+
+# ---- defensive shape by quarter -----------------------------------
+shape_data <- ev %>%
+  filter(!is.na(x), !is.na(Game_Quarter)) %>%
+  mutate(Game_Quarter = factor(Game_Quarter, levels = quarter_levels)) %>%
+  filter(!is.na(Game_Quarter))
+
+def_shape <- shape_data %>%
+  filter(da) %>%
+  group_by(TeamName, Game_Quarter) %>%
+  summarise(`Def. actions` = n(),
+            `DA height (m)` = round(mean(x) * 1.05, 1),
+            `Block depth (m)` = round((quantile(x, 0.9) - quantile(x, 0.1)) * 1.05, 1),
+            `Block width (m)` = round((quantile(y, 0.9) - quantile(y, 0.1)) * 0.68, 1),
+            x10 = quantile(x, 0.1), x90 = quantile(x, 0.9),
+            y10 = quantile(y, 0.1), y90 = quantile(y, 0.9), xm = mean(x),
+            .groups = "drop") %>%
+  left_join(shape_data %>% filter(on_ball) %>% group_by(TeamName, Game_Quarter) %>%
+              summarise(`On-ball height (m)` = round(mean(x) * 1.05, 1), .groups = "drop"),
+            by = c("TeamName", "Game_Quarter")) %>%
+  left_join(shape_data %>% filter(ft_touch) %>% count(Game_Quarter, TeamName) %>%
+              group_by(Game_Quarter) %>% mutate(`Field tilt %` = round(100 * n / sum(n))) %>%
+              ungroup() %>% select(-n),
+            by = c("TeamName", "Game_Quarter"))
+
+# score at the start of each quarter, from the goals table
+quarter_start <- c(`1st Quarter` = 0, `2nd Quarter` = 25, `3rd Quarter` = HT_minute, `4th Quarter` = HT_minute + 25, `Injury Time` = 90)
+score_at <- function(m) paste0(sum(goal_events$Scoring_Team == Match_Home & goal_events$expandedMinute < m), "-",
+                               sum(goal_events$Scoring_Team == Match_Away & goal_events$expandedMinute < m))
+def_shape <- def_shape %>%
+  mutate(`Score at start` = vapply(as.character(Game_Quarter), function(q) score_at(quarter_start[[q]]), character(1)))
+
+# ---- proper PPDA: opponent passes in their own 60% / your defensive
+#      actions in that same zone (your attacking 60%) ----------------
+ppda_calc <- function(d, team) {
+  passes <- sum(d$is_pass & d$TeamName == opp_of(team) & coalesce(d$x <= 60, FALSE))
+  das    <- sum(d$ppda_da & d$TeamName == team & coalesce(d$x >= 40, FALSE))
+  c(passes = passes, das = das, ppda = if (das > 0) round(passes / das, 2) else NA_real_)
+}
+ppda_periods <- list(
+  `Full Time` = ev,
+  `1st Half` = ev %>% filter(period == 1),
+  `2nd Half` = ev %>% filter(period == 2),
+  `1st Quarter` = ev %>% filter(Game_Quarter == "1st Quarter"),
+  `2nd Quarter` = ev %>% filter(Game_Quarter == "2nd Quarter"),
+  `3rd Quarter` = ev %>% filter(Game_Quarter == "3rd Quarter"),
+  `4th Quarter` = ev %>% filter(Game_Quarter == "4th Quarter")
+)
+ppda_proper <- bind_rows(lapply(names(ppda_periods), function(p) {
+  d <- ppda_periods[[p]]
+  if (nrow(d) == 0) return(NULL)
+  h <- ppda_calc(d, Match_Home); a <- ppda_calc(d, Match_Away)
+  tibble(Period = p,
+         !!paste0(Match_Home, " | Opp. passes") := h[["passes"]],
+         !!paste0(Match_Home, " | Def. actions") := h[["das"]],
+         !!paste0(Match_Home, " | PPDA") := h[["ppda"]],
+         !!paste0(Match_Away, " | Opp. passes") := a[["passes"]],
+         !!paste0(Match_Away, " | Def. actions") := a[["das"]],
+         !!paste0(Match_Away, " | PPDA") := a[["ppda"]])
+}))
+HomePPDA_Proper <- ppda_proper[[paste0(Match_Home, " | PPDA")]][1]
+AwayPPDA_Proper <- ppda_proper[[paste0(Match_Away, " | PPDA")]][1]
+
+# ---- substitution windows -----------------------------------------
+sub_times <- sort(unique(round(sub_events$expandedMinute)))
+sub_bounds <- c()
+for (s in sub_times) if (length(sub_bounds) == 0 || s - tail(sub_bounds, 1) > 3) sub_bounds <- c(sub_bounds, s)
+sub_bounds <- sub_bounds[sub_bounds > 0 & sub_bounds < FT_minute]
+win_breaks <- c(0, sub_bounds, FT_minute + 1)
+
+sub_impact <- bind_rows(lapply(seq_len(length(win_breaks) - 1), function(w) {
+  st <- win_breaks[w]; en <- win_breaks[w + 1]; mins <- max(en - st, 1)
+  d  <- ev %>% filter(expandedMinute >= st, expandedMinute < en)
+  per10 <- function(v) round(10 * v / mins, 2)
+  tilt_h <- sum(d$ft_touch & d$TeamName == Match_Home); tilt_a <- sum(d$ft_touch & d$TeamName == Match_Away)
+  made <- sub_events %>% filter(expandedMinute >= st, expandedMinute < st + 4)
+  made_txt <- if (w == 1) "Starting XIs" else paste(
+    c(if (any(made$TeamName == Match_Home)) paste0(HomeAbbr, ": ", paste(made$Surname[made$TeamName == Match_Home], collapse = ", ")),
+      if (any(made$TeamName == Match_Away)) paste0(AwayAbbr, ": ", paste(made$Surname[made$TeamName == Match_Away], collapse = ", "))),
+    collapse = " | ")
+  tibble(Window = paste0(round(st), "'-", round(min(en, FT_minute)), "'"),
+         Mins = round(mins),
+         `Subs on` = made_txt,
+         Score = score_at(st),
+         !!paste0(Match_Home, " | xG/10") := per10(sum(d$xg[d$is_shot & d$TeamName == Match_Home])),
+         !!paste0(Match_Home, " | EPV/10") := per10(sum(d$epv[d$out == 1 & d$TeamName == Match_Home])),
+         !!paste0(Match_Home, " | Field tilt %") := if (tilt_h + tilt_a > 0) round(100 * tilt_h / (tilt_h + tilt_a)) else NA,
+         !!paste0(Match_Home, " | PPDA") := ppda_calc(d, Match_Home)[["ppda"]],
+         !!paste0(Match_Away, " | xG/10") := per10(sum(d$xg[d$is_shot & d$TeamName == Match_Away])),
+         !!paste0(Match_Away, " | EPV/10") := per10(sum(d$epv[d$out == 1 & d$TeamName == Match_Away])),
+         !!paste0(Match_Away, " | Field tilt %") := if (tilt_h + tilt_a > 0) round(100 * tilt_a / (tilt_h + tilt_a)) else NA,
+         !!paste0(Match_Away, " | PPDA") := ppda_calc(d, Match_Away)[["ppda"]])
+}))
+
+# ---- goalkeepers --------------------------------------------------
+gk_role <- if ("role" %in% names(ev)) coalesce(ev$role %in% c("Keeper", "GK", "Goalkeeper"), FALSE) else rep(FALSE, nrow(ev))
+gk_players <- unique(ev$playerId[(gk_role | ev$tv %in% c(11, 41, 52, 54, 59)) & !is.na(ev$playerId)])
+
+gk_ev <- ev %>%
+  filter(playerId %in% gk_players) %>%
+  mutate(Action = case_when(tv == 10 ~ "Save", tv == 11 ~ "Claim", tv == 41 ~ "Punch",
+                            tv == 52 ~ "Pick-up", tv == 54 ~ "Smother", tv == 59 ~ "Sweeper",
+                            da | tv %in% c(12, 49) ~ "Other defensive", TRUE ~ NA_character_),
+         Sweeper = tv == 59 | (Action %in% c("Other defensive", "Claim", "Punch") & coalesce(x > 17, FALSE)),
+         Distance = ifelse(is_long | coalesce(dist_m >= 32, FALSE), "Long", "Short"))
+
+gk_summary_team <- function(team) {
+  g  <- gk_ev %>% filter(TeamName == team)
+  sf <- shot_seq %>% filter(TeamName == opp_of(team))
+  sot <- sf %>% filter(on_target | Goal)
+  ga  <- sum(sf$Goal)
+  ps  <- g %>% filter(is_pass)
+  lg  <- ps %>% filter(Distance == "Long"); st <- ps %>% filter(Distance == "Short")
+  tibble(
+    Section = c("Keeper", rep("Shot stopping", 6), rep("Area & sweeping", 3), rep("Distribution", 6)),
+    Metric = c("Goalkeeper(s)", "Shots on target faced", "xGOT faced", "Goals conceded (excl. OG)",
+               "Goals prevented (xGOT - GA)", "Saves", "Save %",
+               "Claims", "Punches", "Sweeper actions",
+               "Passes", "Pass success %", "Short passes", "Short success %", "Long passes", "Long success %"),
+    Value = c(paste(short_name(unique(g$playerId)), collapse = " / "),
+              nrow(sot), format(round(sum(sot$xgot), 2), nsmall = 2), ga,
+              format(round(sum(sot$xgot) - ga, 2), nsmall = 2),
+              sum(g$Action == "Save", na.rm = TRUE), pct_txt(sum(g$Action == "Save", na.rm = TRUE), nrow(sot)),
+              sum(g$Action == "Claim" & g$out == 1, na.rm = TRUE), sum(g$Action == "Punch", na.rm = TRUE),
+              sum(g$Sweeper, na.rm = TRUE),
+              nrow(ps), pct_txt(sum(ps$out == 1), nrow(ps)),
+              nrow(st), pct_txt(sum(st$out == 1), nrow(st)),
+              nrow(lg), pct_txt(sum(lg$out == 1), nrow(lg))) %>% as.character()
+  )
+}
+gk_summary <- gk_summary_team(Match_Home) %>% dplyr::rename(!!Match_Home := Value) %>%
+  left_join(gk_summary_team(Match_Away) %>% dplyr::rename(!!Match_Away := Value), by = c("Section", "Metric"))
+
+# ---- shared pitch plot for arrows ---------------------------------
+pitch_title <- function(title, subtitle = Match_Fixture) {
+  list(labs(title = title, subtitle = subtitle, caption = My_caption),
+       theme_ai(title_size = 9, subtitle_size = 6, legend_position = "bottom"),
+       theme(legend.text = element_text(size = 6), legend.title = element_blank(),
+             legend.background = element_rect(fill = "snow", colour = NA),
+             legend.key = element_rect(fill = "snow", colour = NA)))
+}
+```
+
 ## Row {height="320px"}
 
 ```{r}
@@ -5163,6 +5634,116 @@ ggplot() +
            size = 2, color = Color_Away_Text, fontface = "bold", fill = Color_Away)
 
 ```
+
+## Substitution Impact
+```{r}
+#| title: Substitution Impact
+#| label: substitution impact table
+
+ai_gt(sub_impact, "Substitution Impact - Before and After Each Sub Window",
+      subtitle = paste0(Match_Fixture, " | xG and EPV per 10 minutes, field tilt and PPDA within each window"),
+      rowname = "Window") %>%
+  gt_team_spanners() %>%
+  fmt_number(columns = ends_with("/10"), decimals = 2) %>%
+  fmt_number(columns = ends_with("PPDA"), decimals = 2) %>%
+  fmt_percent(columns = ends_with("Field tilt %"), decimals = 0, scale_values = FALSE) %>%
+  cols_align(align = "left", columns = "Subs on") %>%
+  gt_color_rows(columns = all_of(paste0(Match_Home, " | xG/10")), palette = team_scale(Match_Home)) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Home, " | EPV/10")), palette = team_scale(Match_Home)) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Home, " | Field tilt %")), palette = team_scale(Match_Home), domain = c(0, 100)) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Away, " | xG/10")), palette = team_scale(Match_Away)) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Away, " | EPV/10")), palette = team_scale(Match_Away)) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Away, " | Field tilt %")), palette = team_scale(Match_Away), domain = c(0, 100)) %>%
+  tab_footnote("Windows split at each substitution (subs within 3 minutes are grouped). Short windows are noisy, so read alongside the minutes column.")
+```
+
+```{r}
+#| label: match vs season setup
+#| output: false
+
+focus_in_match <- Focus_Team %in% c(Match_Home, Match_Away)
+season_games <- MatchSummaryGameNameData %>%
+  filter(as.character(Match_day) != as.character(MatchDay))
+focus_has_baseline <- focus_in_match && n_distinct(season_games$Fixture[season_games$Team == Focus_Team]) >= 1
+```
+
+```{r}
+#| output: asis
+#| echo: false
+# row only shows when the focus team has other games in the season database
+if (focus_has_baseline) cat("\n\n## Match vs Season\n\n")
+```
+
+```{r}
+#| title: Match vs Season Average
+#| label: match vs season dumbbell
+#| eval: !expr focus_has_baseline
+#| include: !expr focus_has_baseline
+#| fig-width: 7
+#| fig-height: 6.5
+#| fig-dpi: 200
+
+kpi_for <- c(Goals = "Goals", xG = "xG", xGOT = "xGOT", Shots = "Total Shots",
+             `Shots on target` = "SoT", `Big chances` = "BCs", `Possession %` = "Possession %",
+             `Field tilt %` = "Field Tilt %", `Box touches` = "PKBox Touches",
+             `Pass success %` = "Pass Success %", EPV = "EPV")
+kpi_against <- c(`Goals against` = "Goals", `xG against` = "xG", `Shots against` = "Total Shots")
+lower_better <- names(kpi_against)
+
+pull_kpis <- function(df, team_filter, map) {
+  df <- df %>% filter(team_filter(Team))
+  bind_rows(lapply(names(map), function(k) {
+    col <- map[[k]]
+    if (!col %in% names(df)) return(NULL)
+    tibble(KPI = k, value = suppressWarnings(as.numeric(df[[col]])), grp = if ("Fixture" %in% names(df)) df$Fixture else "match")
+  }))
+}
+is_focus <- function(t) t == Focus_Team
+is_opp   <- function(t) t != Focus_Team
+
+match_vals <- bind_rows(pull_kpis(MatchSummaryData, is_focus, kpi_for),
+                        pull_kpis(MatchSummaryData, is_opp, kpi_against)) %>%
+  group_by(KPI) %>% summarise(match = sum(value, na.rm = TRUE), .groups = "drop")
+season_vals <- bind_rows(pull_kpis(season_games, is_focus, kpi_for),
+                         pull_kpis(season_games, function(t) t == "All Oppo", kpi_against)) %>%
+  group_by(KPI) %>%
+  summarise(season = mean(value, na.rm = TRUE), lo = min(value, na.rm = TRUE),
+            hi = max(value, na.rm = TRUE), games = n(), .groups = "drop")
+
+dumbbell <- match_vals %>%
+  inner_join(season_vals, by = "KPI") %>%
+  mutate(KPI = factor(KPI, levels = c(names(kpi_for), names(kpi_against))),
+         better = ifelse(KPI %in% lower_better, match <= season, match >= season),
+         Verdict = ifelse(better, "Better than average", "Worse than average"))
+lab <- function(v) ifelse(abs(v) >= 10, format(round(v, 0), nsmall = 0), format(round(v, 2), nsmall = 2))
+n_games <- max(dumbbell$games)
+
+ggplot(dumbbell, aes(y = 0)) +
+  geom_segment(aes(x = lo, xend = hi, yend = 0), colour = "grey85", linewidth = 3, lineend = "round") +
+  geom_segment(aes(x = season, xend = match, yend = 0), colour = "grey40", linewidth = 0.7) +
+  geom_point(aes(x = season), colour = "grey40", size = 2.6) +
+  geom_point(aes(x = match, fill = Verdict), shape = 21, colour = "black", size = 3.2) +
+  geom_text(aes(x = season, label = lab(season)), vjust = 2.1, size = 2, colour = "grey30") +
+  geom_text(aes(x = match, label = lab(match)), vjust = -1.3, size = 2.1, fontface = "bold") +
+  scale_fill_manual(values = c(`Better than average` = col_success, `Worse than average` = col_fail), name = NULL) +
+  scale_x_continuous(expand = expansion(mult = 0.25)) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  facet_wrap(~ KPI, ncol = 1, scales = "free_x", strip.position = "left") +
+  labs(title = paste0(Focus_Team, " - This Match vs Season Average"),
+       subtitle = paste0(Match_Fixture, " | grey dot = average of ", n_games,
+                         " other games, grey bar = season range, coloured dot = this match"),
+       x = NULL, y = NULL, caption = My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 7, legend_position = "top") +
+  theme(strip.placement = "outside",
+        strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7, face = "bold"),
+        strip.background = element_rect(fill = "snow", colour = NA),
+        axis.text = element_blank(), axis.ticks = element_blank(),
+        panel.spacing.y = unit(0.1, "lines"),
+        panel.grid = element_blank(),
+        legend.background = element_rect(fill = "snow", colour = NA),
+        legend.key = element_rect(fill = "snow", colour = NA))
+```
+
 
 # Pass Maps
 ```{r}
@@ -7428,6 +8009,279 @@ AwayPRecievedHeatMapplot1Sub <- plottingData %>%
 AwayPRecievedHeatMapplot1Sub
 
 ```
+
+## Set Pieces
+```{r}
+#| title: Set-Piece Summary
+#| label: set piece summary table
+
+ai_gt(sp_summary, "Set Pieces", group = "Section", rowname = "Metric") %>%
+  tab_style(style = list(cell_text(weight = "bold", color = Color_Home_Text), cell_fill(color = Color_Home)),
+            locations = cells_column_labels(columns = all_of(Match_Home))) %>%
+  tab_style(style = list(cell_text(weight = "bold", color = Color_Away_Text), cell_fill(color = Color_Away)),
+            locations = cells_column_labels(columns = all_of(Match_Away))) %>%
+  tab_footnote("First contact: the team that touches the ball first after the delivery (aerial duels go to the winner). Throw-ins retained = first touch by the taking team.")
+```
+
+## Set-Piece Deliveries {.flow}
+### Home {.tabset}
+```{r}
+#| title: Corners
+#| label: home corner deliveries
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+# (argument is sp_kind, not type - the data has its own 'type' column)
+plot_sp_deliveries <- function(team, sp_kind) {
+  d <- sp_events %>% filter(TeamName == .env$team, sp_type %in% .env$sp_kind, !is.na(end_x))
+  fc_cols <- c(Won = col_success, Lost = col_fail, `No contact` = "grey45")
+  ggplot(d) +
+    pitch_base() +
+    geom_segment(aes(x = x, y = y, xend = end_x, yend = end_y, colour = First_Contact,
+                     linetype = ifelse(short, "Short", "Direct")),
+                 arrow = arrow(length = unit(0.12, "cm"), type = "closed"), linewidth = 0.45, alpha = 0.85) +
+    geom_point(aes(x = end_x, y = end_y, colour = First_Contact), size = 1.2) +
+    scale_colour_manual(values = fc_cols, drop = FALSE) +
+    scale_linetype_manual(values = c(Direct = "solid", Short = "dashed")) +
+    coord_cartesian(xlim = c(50, 100)) +
+    pitch_title(paste0(team, " ", paste(sp_kind, collapse = " & "), " Deliveries - First Contact"),
+                paste0(Match_Fixture, " | ", nrow(d), " deliveries | dashed = short"))
+}
+plot_sp_deliveries(Match_Home, "Corner")
+```
+
+```{r}
+#| title: Free Kicks
+#| label: home free kick deliveries
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_sp_deliveries(Match_Home, "Free kick")
+```
+
+### Away {.tabset}
+```{r}
+#| title: Corners
+#| label: away corner deliveries
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_sp_deliveries(Match_Away, "Corner")
+```
+
+```{r}
+#| title: Free Kicks
+#| label: away free kick deliveries
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_sp_deliveries(Match_Away, "Free kick")
+```
+
+## Shot-Creating Sequences
+```{r}
+#| title: Where Shots Came From
+#| label: shot sequence origins
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+origin_levels <- c("Open-play regain", "Keeper", "Goal kick", "Throw-in", "Free kick", "Corner", "Kick-off")
+seq_origin <- shot_seq %>%
+  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away)),
+         start_type = factor(coalesce(start_type, "Open-play regain"), levels = origin_levels)) %>%
+  group_by(TeamName, start_type, .drop = FALSE) %>%
+  summarise(xG = sum(xg), Shots = n(), Goals = sum(Goal), .groups = "drop") %>%
+  filter(start_type %in% unique(coalesce(shot_seq$start_type, "Open-play regain")))
+
+ggplot(seq_origin, aes(x = xG, y = start_type, fill = TeamName)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, colour = "#454545", linewidth = 0.2) +
+  geom_text(aes(label = ifelse(Shots > 0, paste0(Shots, " shots", ifelse(Goals > 0, paste0(", ", Goals, " goals"), "")), "")),
+            position = position_dodge(width = 0.8), hjust = -0.1, size = 2.1) +
+  scale_fill_manual(values = team_cols, name = NULL) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.35))) +
+  labs(title = "Shot-Creating Sequences - How They Started",
+       subtitle = paste0(Match_Fixture, " | xG by how the possession sequence began"),
+       x = "xG", y = NULL, caption = My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7, legend_position = "top") +
+  theme(panel.grid.major.x = element_line(colour = "grey88", linewidth = 0.3),
+        legend.background = element_rect(fill = "snow", colour = NA))
+```
+
+```{r}
+#| title: Sequence Summary
+#| label: shot sequence summary
+
+seq_summary <- shot_seq %>%
+  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))) %>%
+  group_by(Team = TeamName) %>%
+  summarise(Shots = n(), Goals = sum(Goal), xG = round(sum(xg), 2),
+            `Median passes` = median(Passes), `Median duration (s)` = median(Duration),
+            `From regains %` = round(100 * mean(start_type == "Open-play regain", na.rm = TRUE)),
+            `10+ pass sequences` = sum(Passes >= 10),
+            `Under 10s` = sum(Duration < 10), .groups = "drop") %>%
+  mutate(Team = as.character(Team))
+
+ai_gt(seq_summary %>% mutate(Group = Team), "Shot-Creating Sequences", group = "Group", rowname = "Team") %>%
+  fmt_number(columns = "xG", decimals = 2) %>%
+  gt_team_groups(seq_summary$Team) %>%
+  tab_footnote("A sequence runs from the moment a team gains the ball (or restarts from a dead ball) until the other team touches it.")
+```
+
+## Shot Sequence Detail {.flow}
+### Home {.tabset}
+```{r}
+#| title: Sequence Map
+#| label: home shot sequence map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_shot_sequences <- function(team) {
+  d <- shot_seq %>% filter(TeamName == team)
+  g <- d %>% filter(Goal)
+  ggplot(d) +
+    pitch_base() +
+    geom_segment(aes(x = start_x, y = start_y, xend = shot_x, yend = shot_y),
+                 colour = "grey35", linewidth = 0.3, linetype = "dashed", alpha = 0.7) +
+    geom_point(aes(x = start_x, y = start_y, shape = start_type), colour = "grey20", size = 1.6) +
+    geom_point(aes(x = shot_x, y = shot_y, size = xg), fill = team_col(team), colour = "black",
+               shape = 21, alpha = 0.85) +
+    geom_image(data = g, aes(x = shot_x, y = shot_y, image = ball_icon), size = 0.035) +
+    geom_label_repel(data = g, aes(x = shot_x, y = shot_y,
+                                   label = paste0(Shooter, " ", Min, " (", Passes, " passes, ", Duration, "s)")),
+                     size = 2, label.size = 0.15, fill = "snow", min.segment.length = 0, box.padding = 0.5) +
+    scale_size_continuous(range = c(1, 6), name = "xG") +
+    scale_shape_manual(values = c(`Open-play regain` = 16, Keeper = 15, `Goal kick` = 0, `Throw-in` = 2,
+                                  `Free kick` = 17, Corner = 4, `Kick-off` = 8), name = "Started from") +
+    pitch_title(paste0(team, " Shot-Creating Sequences"),
+                paste0(Match_Fixture, " | start of each sequence (shape) to the shot (sized by xG)")) +
+    guides(size = "none")
+}
+plot_shot_sequences(Match_Home)
+```
+
+```{r}
+#| title: Sequence Table
+#| label: home shot sequence table
+
+shot_seq_table <- function(team) {
+  d <- shot_seq %>% filter(TeamName == team) %>% arrange(expandedMinute) %>%
+    transmute(Min, Shooter, Result, xG = round(xg, 2), Situation = Class,
+              `Started by` = Starter, `Started from` = start_type, `Start zone` = start_zone,
+              Passes, `Duration (s)` = Duration, Goal)
+  ai_gt(d, paste0(team, " - Shot-Creating Sequences")) %>%
+    fmt_number(columns = "xG", decimals = 2) %>%
+    gt_color_rows(columns = "xG", palette = team_scale(team), domain = c(0, 1)) %>%
+    gt_color_rows(columns = "Passes", palette = team_scale(team), domain = c(0, max(c(d$Passes, 1)))) %>%
+    tab_style(style = list(cell_text(weight = "bold")), locations = cells_body(rows = Goal)) %>%
+    tab_style(style = list(cell_fill(color = team_col(team)), cell_text(color = team_txt(team), weight = "bold")),
+              locations = cells_body(columns = c(Min, Shooter, Result), rows = Goal)) %>%
+    cols_hide("Goal")
+}
+shot_seq_table(Match_Home)
+```
+
+### Away {.tabset}
+```{r}
+#| title: Sequence Map
+#| label: away shot sequence map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_shot_sequences(Match_Away)
+```
+
+```{r}
+#| title: Sequence Table
+#| label: away shot sequence table
+
+shot_seq_table(Match_Away)
+```
+
+## Box and Final-Third Entries
+```{r}
+#| title: Entries by Channel
+#| label: entries table
+
+entry_tbl_gt <- entry_table %>%
+  rename_with(~ sub("^Box \\| ", "Box entries | ", .x)) %>%
+  rename_with(~ sub("^Final third \\| ", "Final-third entries | ", .x))
+
+ai_gt(entry_tbl_gt, "Box and Final-Third Entries (open play)", group = "TeamName", rowname = "Channel") %>%
+  tab_spanner(label = "Box entries", columns = starts_with("Box entries | ")) %>%
+  tab_spanner(label = "Final-third entries", columns = starts_with("Final-third entries | ")) %>%
+  cols_label_with(columns = contains(" | "), fn = function(n) sub("^.* \\| ", "", n)) %>%
+  fmt_percent(columns = ends_with("Success %"), decimals = 0, scale_values = FALSE) %>%
+  tab_style(style = cell_text(weight = "bold"), locations = cells_body(rows = Channel == "Total")) %>%
+  tab_style(style = cell_text(weight = "bold"), locations = cells_stub(rows = Channel == "Total")) %>%
+  tab_style(locations = cells_column_spanners(), style = list(cell_text(weight = "bold", size = 15))) %>%
+  gt_team_groups(c(Match_Home, Match_Away)) %>%
+  tab_footnote("Channel = where the pass or carry started. Left/right from the attacking team's view. Set pieces excluded.")
+```
+
+## Entry Maps {.flow}
+### Home {.tabset}
+```{r}
+#| title: Box
+#| label: home box entries map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_entries <- function(team, flag, label) {
+  d <- entries %>% filter(TeamName == team, .data[[flag]]) %>%
+    mutate(Outcome = ifelse(Success, "Successful", "Unsuccessful"))
+  ggplot(d) +
+    pitch_base() +
+    geom_segment(aes(x = x, y = y, xend = end_x, yend = end_y, colour = Kind, alpha = Outcome),
+                 arrow = arrow(length = unit(0.1, "cm"), type = "closed"), linewidth = 0.4) +
+    scale_colour_manual(values = c(Pass = team_col(team), Carry = "#2C7FB8")) +
+    scale_alpha_manual(values = c(Successful = 0.9, Unsuccessful = 0.25)) +
+    coord_cartesian(xlim = if (flag == "box_entry") c(45, 100) else c(30, 100)) +
+    pitch_title(paste0(team, " ", label),
+                paste0(Match_Fixture, " | ", sum(d$Success), " of ", nrow(d), " successful (",
+                       pct_txt(sum(d$Success), nrow(d)), ") | faded = unsuccessful"))
+}
+plot_entries(Match_Home, "box_entry", "Box Entries")
+```
+
+```{r}
+#| title: Final Third
+#| label: home final third entries map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_entries(Match_Home, "ft_entry", "Final-Third Entries")
+```
+
+### Away {.tabset}
+```{r}
+#| title: Box
+#| label: away box entries map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_entries(Match_Away, "box_entry", "Box Entries")
+```
+
+```{r}
+#| title: Final Third
+#| label: away final third entries map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_entries(Match_Away, "ft_entry", "Final-Third Entries")
+```
+
 
 # Player Analysis
 ```{r}
@@ -16153,6 +17007,228 @@ AwaytouchPlot2half
 
 
 ```
+## Transitions
+### Home
+```{r}
+#| title: Regain to Shot
+#| label: home transitions plot
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_regain_to_shot <- function(team) {
+  d <- regain_shots %>% filter(TeamName == .env$team) %>% mutate(t = pmin(Duration, 60))
+  ggplot(d, aes(x = t, y = xg)) +
+    annotate("rect", xmin = -Inf, xmax = fast_window, ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.5) +
+    annotate("text", x = fast_window / 2, y = Inf, label = paste0("Within ", fast_window, "s"),
+             vjust = 1.5, size = 2.3, colour = "grey30") +
+    geom_point(fill = team_col(team), shape = 21, colour = "black", size = 3, alpha = 0.85) +
+    geom_image(data = d %>% filter(Goal), aes(x = t, y = xg, image = ball_icon), size = 0.045) +
+    geom_text_repel(data = d %>% filter(Goal), aes(label = paste0(Shooter, " ", Min)),
+                    size = 2.1, min.segment.length = 0, box.padding = 0.5) +
+    scale_x_continuous(limits = c(0, 62), breaks = seq(0, 60, 10), labels = c(seq(0, 50, 10), "60+")) +
+    scale_y_continuous(limits = c(0, max(c(d$xg, 0.3)) * 1.15)) +
+    labs(title = paste0(team, " - Seconds from Regain to Shot"),
+         subtitle = paste0(Match_Fixture, " | each dot is a shot from an open-play regain"),
+         x = "Seconds after winning the ball", y = "xG", caption = My_caption) +
+    theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7) +
+    theme(panel.grid.major = element_line(colour = "grey88", linewidth = 0.3))
+}
+plot_regain_to_shot(Match_Home)
+```
+
+```{r}
+#| title: Transitions Summary
+#| label: home transitions table
+
+transition_table <- function(team) {
+  transition_team(team) %>%
+    mutate(Group = ifelse(grepl("conceded", Metric), "After losing the ball", "After winning the ball")) %>%
+    ai_gt(paste0(team, " - Transitions"), group = "Group", rowname = "Metric") %>%
+    cols_label(Value = team) %>%
+    tab_style(style = list(cell_text(weight = "bold", color = team_txt(team)), cell_fill(color = team_col(team))),
+              locations = cells_column_labels(columns = "Value")) %>%
+    tab_style(style = list(cell_text(weight = "bold", color = team_txt(team)), cell_fill(color = team_col(team))),
+              locations = cells_row_groups()) %>%
+    tab_footnote("Open-play regain = a sequence started by winning the ball in play (tackle, interception, recovery or an opponent's misplaced pass).")
+}
+transition_table(Match_Home)
+```
+
+### Away
+```{r}
+#| title: Regain to Shot
+#| label: away transitions plot
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_regain_to_shot(Match_Away)
+```
+
+```{r}
+#| title: Transitions Summary
+#| label: away transitions table
+
+transition_table(Match_Away)
+```
+
+## Transition Maps
+```{r}
+#| title: Fast Transitions Map
+#| label: transitions pitch map
+#| fig-width: 8
+#| fig-height: 3.6
+#| fig-dpi: 200
+
+fast_map <- regain_shots %>%
+  filter(Duration <= fast_window) %>%
+  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away)))
+
+ggplot(fast_map) +
+  pitch_base() +
+  geom_segment(aes(x = start_x, y = start_y, xend = shot_x, yend = shot_y, colour = TeamName),
+               arrow = arrow(length = unit(0.12, "cm"), type = "closed"), linewidth = 0.5) +
+  geom_point(aes(x = start_x, y = start_y), shape = 4, size = 1.8, stroke = 0.8) +
+  geom_point(aes(x = shot_x, y = shot_y, size = xg, fill = TeamName), shape = 21, colour = "black") +
+  geom_image(data = fast_map %>% filter(Goal), aes(x = shot_x, y = shot_y, image = ball_icon), size = 0.05) +
+  scale_colour_manual(values = team_cols, guide = "none") +
+  scale_fill_manual(values = team_cols, guide = "none") +
+  scale_size_continuous(range = c(1, 5), guide = "none") +
+  # team-coloured strip for each facet
+  ggh4x::facet_wrap2(~ TeamName, drop = FALSE,
+    strip = ggh4x::strip_themed(
+      background_x = ggh4x::elem_list_rect(fill = c(Color_Home, Color_Away), colour = "black"),
+      text_x = ggh4x::elem_list_text(colour = c(Color_Home_Text, Color_Away_Text), face = "bold", size = 8))) +
+  pitch_title(paste0("Shots Within ", fast_window, "s of Winning the Ball"),
+              paste0(Match_Fixture, " | x = regain, circle = shot (sized by xG)"))
+```
+
+## Defensive Shape
+```{r}
+#| title: Defensive Line Height by Quarter
+#| label: defensive shape line chart
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+shape_long <- def_shape %>%
+  filter(Game_Quarter != "Injury Time") %>%
+  select(TeamName, Game_Quarter, `Defensive actions` = `DA height (m)`, `On the ball` = `On-ball height (m)`) %>%
+  pivot_longer(c(`Defensive actions`, `On the ball`), names_to = "Measure", values_to = "Height")
+
+ggplot(shape_long, aes(x = Game_Quarter, y = Height, colour = TeamName, group = interaction(TeamName, Measure))) +
+  geom_line(aes(linetype = Measure), linewidth = 0.8) +
+  geom_point(size = 2) +
+  geom_text(aes(label = Height), vjust = -0.9, size = 2.1, show.legend = FALSE) +
+  scale_colour_manual(values = team_cols, name = NULL) +
+  scale_linetype_manual(values = c(`Defensive actions` = "solid", `On the ball` = "dashed"), name = NULL) +
+  scale_y_continuous(limits = c(0, 105), breaks = seq(0, 105, 15)) +
+  labs(title = "How High Each Team Defended and Played",
+       subtitle = paste0(Match_Fixture, " | average height (metres from own goal) of defensive actions (solid) and on-ball events (dashed)"),
+       x = NULL, y = "Metres from own goal", caption = My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 6, axis = TRUE, axis_size = 7, legend_position = "bottom") +
+  theme(panel.grid.major.y = element_line(colour = "grey88", linewidth = 0.3),
+        legend.background = element_rect(fill = "snow", colour = NA),
+        legend.key = element_rect(fill = "snow", colour = NA))
+```
+
+```{r}
+#| title: Defensive Shape Table
+#| label: defensive shape table
+
+def_shape %>%
+  mutate(Game_Quarter = as.character(Game_Quarter)) %>%
+  select(TeamName, Quarter = Game_Quarter, `Score at start`, `Def. actions`, `DA height (m)`,
+         `Block depth (m)`, `Block width (m)`, `On-ball height (m)`, `Field tilt %`) %>%
+  arrange(factor(TeamName, levels = c(Match_Home, Match_Away)), factor(Quarter, levels = quarter_levels)) %>%
+  ai_gt("Defensive Shape by Quarter", group = "TeamName", rowname = "Quarter") %>%
+  fmt_percent(columns = "Field tilt %", decimals = 0, scale_values = FALSE) %>%
+  gt_team_groups(c(Match_Home, Match_Away)) %>%
+  tab_footnote("Block depth / width = distance between the 10th and 90th percentile of defensive-action positions (length / width of the pitch). Higher DA height = defending further up the pitch.")
+```
+
+## Defensive Block {.flow}
+### Home
+```{r}
+#| title: Home Defensive Block by Quarter
+#| label: home defensive block
+#| fig-width: 8
+#| fig-height: 5
+#| fig-dpi: 200
+
+plot_block <- function(team) {
+  pts <- shape_data %>% filter(TeamName == .env$team, da, Game_Quarter != "Injury Time")
+  box <- def_shape %>% filter(TeamName == .env$team, Game_Quarter != "Injury Time")
+  ggplot(pts) +
+    pitch_base() +
+    geom_rect(data = box, aes(xmin = x10, xmax = x90, ymin = y10, ymax = y90),
+              fill = team_col(team), alpha = 0.18, colour = team_col(team), linewidth = 0.4, inherit.aes = FALSE) +
+    geom_point(aes(x = x, y = y), colour = team_col(team), size = 0.8, alpha = 0.7) +
+    geom_vline(data = box, aes(xintercept = xm), colour = "black", linetype = "dashed", linewidth = 0.4) +
+    geom_label(data = box, aes(x = 50, y = 104, label = paste0(`DA height (m)`, "m high | score ", `Score at start`)),
+               size = 2, label.size = 0, fill = "snow", inherit.aes = FALSE) +
+    facet_wrap(~ Game_Quarter, nrow = 2) +
+    pitch_title(paste0(team, " Defensive Block by Quarter"),
+                paste0(Match_Fixture, " | shaded box = middle 80% of defensive actions, dashed line = average height")) +
+    team_strip(team)
+}
+plot_block(Match_Home)
+```
+
+### Away
+```{r}
+#| title: Away Defensive Block by Quarter
+#| label: away defensive block
+#| fig-width: 8
+#| fig-height: 5
+#| fig-dpi: 200
+
+plot_block(Match_Away)
+```
+
+## PPDA (Standard Definition)
+```{r}
+#| title: PPDA Table
+#| label: proper ppda table
+
+ai_gt(ppda_proper, "PPDA - Opposition Passes in Their Own 60% per Defensive Action",
+      subtitle = paste0(Match_Fixture, " | dashboard PPDA (all passes / all defensive actions): ",
+                        Match_Home, " ", HomePPDA, ", ", Match_Away, " ", AwayPPDA),
+      rowname = "Period") %>%
+  gt_team_spanners() %>%
+  fmt_number(columns = ends_with("PPDA"), decimals = 2) %>%
+  tab_footnote("Lower PPDA = more intense pressing. Defensive actions = tackles, interceptions, challenges and fouls committed in the defending team's attacking 60% of the pitch.")
+```
+
+```{r}
+#| title: PPDA by Quarter
+#| label: proper ppda chart
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+ppda_q <- ppda_proper %>%
+  filter(grepl("Quarter", Period)) %>%
+  select(Period, ends_with("| PPDA")) %>%
+  pivot_longer(-Period, names_to = "TeamName", values_to = "PPDA") %>%
+  mutate(TeamName = sub(" \\| PPDA$", "", TeamName))
+
+ggplot(ppda_q, aes(x = Period, y = PPDA, fill = TeamName)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, colour = "#454545", linewidth = 0.2) +
+  geom_text(aes(label = ifelse(is.na(PPDA), "", format(PPDA, nsmall = 2))), position = position_dodge(width = 0.8),
+            vjust = -0.4, size = 2.2) +
+  scale_fill_manual(values = team_cols, name = NULL) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title = "PPDA by Quarter (lower = more pressing)",
+       subtitle = paste0(Match_Fixture, " | opposition passes in their own 60% per defensive action"),
+       x = NULL, y = "PPDA", caption = My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7, legend_position = "top") +
+  theme(panel.grid.major.y = element_line(colour = "grey88", linewidth = 0.3),
+        legend.background = element_rect(fill = "snow", colour = NA))
+```
+
+
 # Pressing Analysis
 ``` {r}
 #| label: pressing data calculations
@@ -18582,6 +19658,150 @@ Away_S_plotWT_I
 
 ```
 
+## Goalkeepers
+### Home
+```{r}
+#| title: Shot Stopping
+#| label: home goalkeeper shot stopping
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_shot_stopping <- function(team) {
+  d <- shot_seq %>%
+    filter(TeamName == opp_of(.env$team), on_target | Goal)
+  keeper <- paste(short_name(unique(gk_ev$playerId[gk_ev$TeamName == team])), collapse = " / ")
+  ggplot(d, aes(x = expandedMinute, y = xgot)) +
+    geom_vline(xintercept = HT_minute, linetype = "dashed", colour = "grey60", linewidth = 0.3) +
+    # same style as the regain-to-shot plot: dots in the shooting team's colour,
+    # goals shown with the ball image and labelled
+    geom_point(data = d %>% filter(!Goal), fill = team_col(opp_of(team)), shape = 21,
+               colour = "black", size = 3, alpha = 0.85) +
+    geom_image(data = d %>% filter(Goal), aes(image = ball_icon), size = 0.045) +
+    geom_text_repel(data = d %>% filter(Goal), aes(label = paste0(Shooter, " ", Min)),
+                    size = 2.1, min.segment.length = 0, box.padding = 0.5) +
+    scale_x_continuous(limits = c(0, FT_minute + 2), breaks = seq(0, 135, 15)) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+    labs(title = paste0(keeper, " (", team, ") - Shots on Target Faced"),
+         subtitle = paste0(Match_Fixture, " | dots = saved, balls = goals | xGOT faced ", format(round(sum(d$xgot), 2), nsmall = 2),
+                           ", conceded ", sum(d$Goal), ", goals prevented ",
+                           format(round(sum(d$xgot) - sum(d$Goal), 2), nsmall = 2)),
+         x = "Match Time (Mins)", y = "xGOT of shot", caption = My_caption) +
+    theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7) +
+    theme(panel.grid.major = element_line(colour = "grey88", linewidth = 0.3))
+}
+plot_shot_stopping(Match_Home)
+```
+
+```{r}
+#| title: Goalkeeper Summary
+#| label: home goalkeeper summary table
+
+gk_table <- function(team) {
+  gk_summary_team(team) %>%
+    ai_gt(paste0(team, " - Goalkeeper"), group = "Section", rowname = "Metric") %>%
+    cols_label(Value = team) %>%
+    tab_style(style = list(cell_text(weight = "bold", color = team_txt(team)), cell_fill(color = team_col(team))),
+              locations = cells_column_labels(columns = "Value")) %>%
+    tab_style(style = list(cell_text(weight = "bold", color = team_txt(team)), cell_fill(color = team_col(team))),
+              locations = cells_row_groups()) %>%
+    tab_footnote("Goals prevented = xGOT faced minus goals conceded (own goals excluded); positive = kept out more than an average keeper would. Long pass = Opta long ball or 32m+. Sweeper actions = keeper-sweeper events plus claims, punches and defensive actions outside the box.")
+}
+gk_table(Match_Home)
+```
+
+### Away
+```{r}
+#| title: Shot Stopping
+#| label: away goalkeeper shot stopping
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_shot_stopping(Match_Away)
+```
+
+```{r}
+#| title: Goalkeeper Summary
+#| label: away goalkeeper summary table
+
+gk_table(Match_Away)
+```
+
+## Goalkeeper Maps {.flow}
+### Home {.tabset}
+```{r}
+#| title: Distribution
+#| label: home keeper distribution
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_gk_distribution <- function(team) {
+  d <- gk_ev %>% filter(TeamName == .env$team, is_pass, !is.na(end_x)) %>%
+    mutate(Outcome = ifelse(out == 1, "Successful", "Unsuccessful"),
+           Restart = ifelse(goal_kick, "Goal kick", "Open play"))
+  ggplot(d) +
+    pitch_base() +
+    geom_segment(aes(x = x, y = y, xend = end_x, yend = end_y, colour = Outcome, linetype = Distance),
+                 arrow = arrow(length = unit(0.1, "cm"), type = "closed"), linewidth = 0.4, alpha = 0.85) +
+    geom_point(aes(x = x, y = y, shape = Restart), size = 1.2) +
+    scale_colour_manual(values = c(Successful = col_success, Unsuccessful = col_fail)) +
+    scale_linetype_manual(values = c(Long = "solid", Short = "dashed")) +
+    scale_shape_manual(values = c(`Goal kick` = 15, `Open play` = 16)) +
+    pitch_title(paste0(team, " Goalkeeper Distribution"),
+                paste0(Match_Fixture, " | ", paste(short_name(unique(d$playerId)), collapse = " / "),
+                       " | long ", sum(d$Distance == "Long"), " (", pct_txt(sum(d$Distance == "Long" & d$out == 1), sum(d$Distance == "Long")),
+                       " success), short ", sum(d$Distance == "Short"), " (", pct_txt(sum(d$Distance == "Short" & d$out == 1), sum(d$Distance == "Short")), ")"))
+}
+plot_gk_distribution(Match_Home)
+```
+
+```{r}
+#| title: Actions
+#| label: home keeper actions
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_gk_actions <- function(team) {
+  d <- gk_ev %>% filter(TeamName == .env$team, !is.na(Action), !is.na(x))
+  ggplot(d) +
+    pitch_base() +
+    annotate("rect", xmin = 0, xmax = 17, ymin = 21.1, ymax = 78.9, fill = NA, colour = "black", linewidth = 0.5) +
+    geom_point(aes(x = x, y = y, shape = Action,
+                   colour = ifelse(Sweeper, "Outside box / sweeper", "Inside box")), size = 2.2, stroke = 0.9) +
+    scale_shape_manual(values = c(Save = 16, Claim = 17, Punch = 15, `Pick-up` = 1, Smother = 18, Sweeper = 8, `Other defensive` = 4)) +
+    scale_colour_manual(values = c(`Outside box / sweeper` = team_col(team), `Inside box` = "grey30")) +
+    coord_cartesian(xlim = c(0, 50)) +
+    pitch_title(paste0(team, " Goalkeeper Actions"),
+                paste0(Match_Fixture, " | saves, claims, punches, pick-ups and sweeper actions"))
+}
+plot_gk_actions(Match_Home)
+```
+
+### Away {.tabset}
+```{r}
+#| title: Distribution
+#| label: away keeper distribution
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_gk_distribution(Match_Away)
+```
+
+```{r}
+#| title: Actions
+#| label: away keeper actions
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_gk_actions(Match_Away)
+```
+
+
 # Methodology
 
 <!--
@@ -18694,4 +19914,46 @@ Own goals are not shots, so they are not simulated - the actual score can sit ou
 **Pass connections:** built from completed passes only (Opta records no intended receiver for an incomplete pass). Line colour on pass networks = the two players' overall completion %, weighted by passes on that link.
 
 [ADD DEFINITION - game state labels, e.g. garbage time]
+:::
+
+## Row
+
+::: {.card .method-card title="Possession sequences, set pieces and entries"}
+**Sequence:** starts when a team gets the ball (pass, carry, shot, take-on, touch, interception, recovery, won tackle, keeper claim/pick-up) and runs until the other team has it, the period ends or play restarts from a dead ball. Its **start type** is the first event: corner, free kick, throw-in, goal kick, kick-off, keeper, or open-play regain.
+
+**Shot-creating sequence:** the sequence a shot belongs to. Passes = completed and attempted passes in it before the shot; duration = seconds from its first event to the shot.
+
+**Set pieces:** corners, free kicks and throw-ins from the Opta corner/free-kick flags and qualifiers 5, 6 and 107. A **short corner** is the Short_Corners flag or a corner pass under 20m. **First contact** = the team of the next event within 8 seconds (aerial duels go to the winner); none if the ball goes out first. **Set-piece xG** uses the shot's situation where available, otherwise the start type of its sequence.
+
+**Box / final-third entries:** open-play passes and carries starting outside the box (or below the final third) and ending inside it. Channel = where the action started: wings (outer 21.1%), half-spaces, central. A **carry** is the ball moved 5m+ between where a player received it (end of the previous same-team event) and his next action, within one sequence.
+
+[ADD DEFINITION - anything you want to add]
+:::
+
+::: {.card .method-card title="Transitions, defensive shape and PPDA"}
+**Open-play regain:** a sequence started by winning the ball in play rather than from a restart or the keeper. **Regain to shot** = seconds from the regain to the shot; the fast-transition window is 15 seconds. Conceded = the opponent's shots after your team lost the ball.
+
+**DA height:** average position of defensive actions in metres from the team's own goal (105m pitch). **Block depth / width:** distance between the 10th and 90th percentile of defensive-action positions. **On-ball height:** average position of the team's on-ball events.
+
+**PPDA (standard):** opponent passes in their own 60% of the pitch divided by your tackles, interceptions, challenges and fouls in that same zone (your attacking 60%). Lower = more intense pressing. The older dashboard PPDA (all passes / all defensive actions) is shown in the table subtitle for comparison.
+
+[ADD DEFINITION]
+:::
+
+## Row
+
+::: {.card .method-card title="Substitution impact and season baseline"}
+**Substitution windows:** the match split at each substitution (subs within 3 minutes are grouped). xG and EPV are per 10 minutes so windows of different length compare; field tilt and PPDA are calculated within the window.
+
+**Match vs season:** this match against the average of the focus team's other games in the season database (grey bar = range). Blue = better than average, red = worse; for goals, xG and shots against, lower is better.
+
+[ADD DEFINITION]
+:::
+
+::: {.card .method-card title="Goalkeepers"}
+**Goals prevented:** xGOT of shots on target faced minus goals conceded (own goals excluded). Positive = the keeper kept out more than an average keeper would.
+
+**Distribution:** keeper passes; long = Opta long ball or 32m+. **Sweeper actions:** Opta keeper-sweeper events plus claims, punches and defensive actions outside the penalty area.
+
+[ADD DEFINITION]
 :::
