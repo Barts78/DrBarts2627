@@ -427,6 +427,7 @@ period_selector <- function(plots, id, color = "#454545", text_color = "white",
 # tables everywhere - the gt code is untouched.
 # ---------------------------------------------------------------
 use_interactive_tables <- TRUE
+min_touches_pc <- 20   # Poss Control /100 Touches is greyed out below this many touches
 table_header_size <- "0.67rem"   # column title font size in the player tables
 
 ai_reactable <- function(data, color, text_color, subtitle = NULL,
@@ -467,6 +468,21 @@ ai_reactable <- function(data, color, text_color, subtitle = NULL,
     cols[[group]] <- reactable::colDef(name = "", sticky = "left", minWidth = 120,
                                        style = list(background = "#F2F2F2"))
   }
+  # Possession control per 100 touches: grey the cell for low-touch players
+  low_touch_note <- NULL
+  if ("Low_Touches" %in% names(data)) {
+    low <- as.logical(data$Low_Touches)
+    cols[["Low_Touches"]] <- reactable::colDef(show = FALSE)
+    pc <- "Poss Control /100 Touches"
+    if (pc %in% names(data)) {
+      cols[[pc]] <- reactable::colDef(
+        format = reactable::colFormat(digits = 1), aggregate = "mean", minWidth = 85,
+        style = function(value, index) {
+          if (isTRUE(low[index])) list(color = "#9E9E9E", fontStyle = "italic", background = "#F2F2F2")
+        })
+      low_touch_note <- paste0("Greyed Poss Control /100 Touches = fewer than ", min_touches_pc, " touches.")
+    }
+  }
   row_style <- if (!is.null(grey_below) && "Mins" %in% names(data)) {
     function(index) if (!is.na(data$Mins[index]) && data$Mins[index] < grey_below)
       list(color = "#9E9E9E", fontStyle = "italic")
@@ -492,11 +508,24 @@ ai_reactable <- function(data, color, text_color, subtitle = NULL,
       rt, htmltools::div(subtitle, style = "font-size:0.8rem;color:#555;margin-bottom:0.3rem;"))
   }
   htmlwidgets::appendContent(
-    rt, htmltools::div(gt_caption, style = "font-size:0.7rem;color:#777;margin-top:0.3rem;"))
+    rt, htmltools::div(paste(c(low_touch_note, gt_caption), collapse = " | "),
+                       style = "font-size:0.7rem;color:#777;margin-top:0.3rem;"))
 }
 
 show_player_table <- function(gt_tbl, data, color, text_color, subtitle = NULL, grey_below = NULL) {
-  if (!use_interactive_tables || !requireNamespace("reactable", quietly = TRUE)) return(gt_tbl)
+  if (!use_interactive_tables || !requireNamespace("reactable", quietly = TRUE)) {
+    # gt fallback: grey the per-100-touches cell for low-touch players, hide the flag
+    if ("Low_Touches" %in% names(gt_tbl[["_data"]])) {
+      low_rows <- which(as.logical(gt_tbl[["_data"]]$Low_Touches))
+      if ("Poss Control /100 Touches" %in% names(gt_tbl[["_data"]]) && length(low_rows)) {
+        gt_tbl <- gt_tbl %>% tab_style(
+          style = list(cell_text(color = "#9E9E9E", style = "italic"), cell_fill(color = "#F2F2F2")),
+          locations = cells_body(columns = "Poss Control /100 Touches", rows = low_rows))
+      }
+      gt_tbl <- gt_tbl %>% cols_hide(columns = "Low_Touches")
+    }
+    return(gt_tbl)
+  }
   ai_reactable(data, color, text_color, subtitle = subtitle, grey_below = grey_below)
 }
 ```
@@ -753,13 +782,14 @@ compute_season_summary <- function(data, group_vars) {
       Failed_Dribble = Dribbles_Total - Dribbles_Won,
       Poss_Gained = Interceptions_Total + Recoverys_Total +
                     (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost),
-      Poss_Lost = Mis_Control + Failed_Pass + Failed_Cross + Failed_Dribble +
+      Poss_Lost = Mis_Control + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost +
                   OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost,
       Posession_Control =
         Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) +
         (Aerial_Won - Aerial_Lost) -
         (Mis_Control + Dispossessed_Total + UnSuccessful_Passes +
          UnSuccessful_Cross + Dribbles_Lost + OFShots + Blocked_Shot + Offside_Lost),
+      Poss_Control_100 = round(100 * Posession_Control / Touches, 1),
       `EPV % xG Con.`   = round((xG   / TeamEPV) * 100, 1),
       `EPV % NPxG Con.` = round((NPxG / TeamEPV) * 100, 1)
     ) %>%
@@ -841,11 +871,12 @@ compute_summary <- function(data, group_vars) {
            Failed_Cross = Cross_Passes - Successful_Cross,
            Failed_Dribble = Dribbles_Total - Dribbles_Won,
            Poss_Gained = Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost),
-           Poss_Lost = Mis_Control + Failed_Pass + Failed_Cross + Failed_Dribble + OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost,
+           Poss_Lost = Mis_Control + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost + OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost,
            Posession_Control = Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) +
                                (Aerial_Won - Aerial_Lost) -
                                (Mis_Control + Dispossessed_Total + UnSuccessful_Passes +
                                UnSuccessful_Cross + Dribbles_Lost + OFShots + Blocked_Shot + Offside_Lost),
+           Poss_Control_100 = round(100 * Posession_Control / Touches, 1),
            `EPV % xG Con.` = round((xG / TeamEPV) * 100, 1),
            `EPV % NPxG Con.` = round((NPxG / TeamEPV) * 100, 1),
            ) %>%
@@ -3949,7 +3980,7 @@ pitch_title <- function(title, subtitle = Match_Fixture) {
 }
 ```
 
-## Row {height="320px"}
+## Score Summary {height="320px"}
 
 ```{r}
 #| title: Result
@@ -3995,7 +4026,7 @@ htmltools::div(
 )
 ```
 
-## Row {height="130px"}
+## Value Boxes {height="130px"}
 
 ```{r}
 #| content: valuebox
@@ -4039,7 +4070,7 @@ list(icon = "arrow-left-right", color = "light",
      value = paste0(HomeAbbr, " ", HomeEPVxG, "% \u2013 ", AwayEPVxG, "% ", AwayAbbr))
 ```
 
-## Row {height="560px"}
+## xG Race Chart {height="560px"}
 
 ```{r}
 #| title: xG Race
@@ -4098,7 +4129,7 @@ plot_momentum(touch_momentum_fine,
               away_lab = paste(Match_Away, "on the ball"))
 ```
 
-## Row {height="560px"}
+## Threat Race Chart {height="560px"}
 
 ```{r}
 #| title: Threat Race
@@ -4155,6 +4186,132 @@ plot_momentum(tilt_momentum_fine,
               ylab = "Field tilt",
               home_lab = paste(Match_Home, "pinning back"),
               away_lab = paste(Match_Away, "pinning back"))
+```
+## Match Report
+```{r}
+#| title: Match Report
+#| label: match report text
+
+# ---------------------------------------------------------------
+# Auto-generated match report: every sentence is built from the
+# tables behind the dashboard, so it updates with each new match.
+# ---------------------------------------------------------------
+f2  <- function(v) format(round(v, 2), nsmall = 2)
+pct <- function(a, b) if (b > 0) paste0(round(100 * a / b), "%") else "0%"
+n_txt <- function(n, word) paste0(n, " ", word, ifelse(n == 1, "", "s"))
+
+# -- set pieces --
+sp_sentence <- function(team) {
+  s  <- sp_events %>% filter(TeamName == .env$team)
+  co <- s %>% filter(sp_type == "Corner"); dc <- co %>% filter(delivery == "Direct corner")
+  sh <- shot_seq %>% filter(TeamName == .env$team)
+  sp <- sh %>% filter(Class == "Set piece")
+  paste0("<b>", team, "</b> took ", n_txt(nrow(co), "corner"),
+         if (sum(co$short) > 0) paste0(" (", sum(co$short), " short)") else "",
+         if (nrow(dc) > 0) paste0(", winning first contact on ", sum(dc$First_Contact == "Won"), " of ", nrow(dc), " direct deliveries") else "",
+         ". Set pieces produced ", n_txt(nrow(sp), "shot"), " worth ", f2(sum(sp$xg)), " xG",
+         if (sum(sp$Goal) > 0) paste0(" and ", n_txt(sum(sp$Goal), "goal")) else "",
+         " (", pct(sum(sp$xg), sum(sh$xg)), " of their xG).")
+}
+
+# -- transitions --
+tr_sentence <- function(team) {
+  rs <- regain_seqs %>% filter(TeamName == .env$team)
+  fs <- regain_shots %>% filter(TeamName == .env$team, Duration <= fast_window)
+  paste0("<b>", team, "</b> won the ball in open play ", rs %>% nrow(), " times (",
+         sum(rs$start_x >= 66.7, na.rm = TRUE), " in the attacking third) and had ",
+         n_txt(nrow(fs), "shot"), " within ", fast_window, " seconds of a regain, worth ", f2(sum(fs$xg)), " xG",
+         if (sum(fs$Goal) > 0) paste0(" including ", n_txt(sum(fs$Goal), "goal"),
+                                      " (", paste(paste0(fs$Shooter[fs$Goal], " ", fs$Min[fs$Goal]), collapse = ", "), ")") else "",
+         ".")
+}
+
+# -- defensive shape: biggest quarter-to-quarter change in block height --
+shape_change <- function(team) {
+  d <- def_shape %>% filter(TeamName == .env$team, Game_Quarter != "Injury Time") %>% arrange(Game_Quarter)
+  if (nrow(d) < 2) return(NULL)
+  ch <- diff(d$`DA height (m)`); i <- which.max(abs(ch))
+  tibble(team = team, from_q = as.character(d$Game_Quarter[i]), to_q = as.character(d$Game_Quarter[i + 1]),
+         from_h = d$`DA height (m)`[i], to_h = d$`DA height (m)`[i + 1], change = ch[i],
+         score = d$`Score at start`[i + 1])
+}
+sc <- bind_rows(shape_change(Match_Home), shape_change(Match_Away)) %>% arrange(desc(abs(change)))
+shape_txt <- if (nrow(sc) > 0) {
+  lead <- sc[1, ]; other <- if (nrow(sc) > 1) sc[2, ] else NULL
+  paste0("<b>", lead$team, "</b>'s defensive actions ", ifelse(lead$change < 0, "dropped", "pushed up"),
+         " from an average of ", lead$from_h, "m to ", lead$to_h, "m from their own goal between the ",
+         lead$from_q, " and the ", lead$to_q, " (score ", lead$score, " at the start of the ", lead$to_q, ")",
+         if (!is.null(other)) paste0(", while <b>", other$team, "</b> went from ", other$from_h, "m to ", other$to_h,
+                                     "m over the ", other$from_q, " to ", other$to_q) else "",
+         ". Standard PPDA: ", Match_Home, " ", HomePPDA_Proper, ", ", Match_Away, " ", AwayPPDA_Proper,
+         " (lower = more pressing).")
+} else ""
+
+# -- passing chains --
+seq_passes <- ev %>%
+  filter(on_ball, !is.na(seq_id)) %>%
+  group_by(seq_id, TeamName) %>%
+  summarise(passes = sum(is_pass & out == 1), shot = any(is_shot), goal = any(is_shot & tv == 16),
+            min = dplyr::first(minute), per = dplyr::first(period), .groups = "drop")
+chain_sentence <- function(team) {
+  d <- seq_passes %>% filter(TeamName == .env$team)
+  if (nrow(d) == 0) return("")
+  long <- d %>% filter(passes >= 10)
+  best <- d %>% slice_max(passes, n = 1, with_ties = FALSE)
+  paste0("<b>", team, "</b> strung together ", n_txt(nrow(long), "move"), " of 10+ completed passes (",
+         pct(sum(long$passes), sum(d$passes)), " of their completed passes came in those moves",
+         if (nrow(long) > 0) paste0(", ", sum(long$shot), " ended in a shot") else "",
+         "). Their longest move was ", best$passes, " passes (", fmt_match_minute(best$min, best$per), ")",
+         if (best$goal) " and ended in a goal" else if (best$shot) " and ended in a shot" else "", ".")
+}
+
+# -- threat areas: where successful actions added the most EPV --
+threat_sentence <- function(team) {
+  d <- ev %>% filter(TeamName == .env$team, out == 1, !is.na(x), epv != 0) %>%
+    mutate(zone = paste0(c(`Def third` = "defensive third", `Mid third` = "middle third",
+                           `Att third` = "final third")[third_of(x)], ", ", tolower(as.character(channel_of(y)))))
+  if (nrow(d) == 0) return("")
+  z <- d %>% group_by(zone) %>% summarise(epv = sum(epv), .groups = "drop") %>% arrange(desc(epv))
+  tot <- sum(pmax(z$epv, 0))
+  paste0("<b>", team, "</b> generated most threat from the ", z$zone[1], " (", f2(z$epv[1]), " EPV, ",
+         pct(z$epv[1], tot), ")", if (nrow(z) > 1) paste0(", followed by the ", z$zone[2], " (", f2(z$epv[2]), ")") else "", ".")
+}
+
+# -- pass maps: most-used combination and the most involved player --
+pass_links <- ev %>%
+  filter(on_ball, !is.na(seq_id)) %>%
+  mutate(receiver = dplyr::lead(playerId), rec_seq = dplyr::lead(seq_id)) %>%
+  filter(is_pass, out == 1, rec_seq == seq_id, receiver != playerId)
+passmap_sentence <- function(team) {
+  d <- pass_links %>% filter(TeamName == .env$team)
+  if (nrow(d) == 0) return("")
+  pair <- d %>% count(playerId, receiver, sort = TRUE) %>% slice(1)
+  hub <- bind_rows(d %>% count(p = playerId), d %>% count(p = receiver)) %>%
+    group_by(p) %>% summarise(n = sum(n), .groups = "drop") %>% arrange(desc(n)) %>% slice(1)
+  paste0("<b>", team, "</b>'s most used combination was ", short_name(pair$playerId), " to ",
+         short_name(pair$receiver), " (", pair$n, " completed passes), and ", short_name(hub$p),
+         " was the hub of the pass map, involved in ", hub$n, " completed passes.")
+}
+
+report <- list(
+  Summary = summary_line,
+  `Set pieces` = c(sp_sentence(Match_Home), sp_sentence(Match_Away)),
+  Transitions = c(tr_sentence(Match_Home), tr_sentence(Match_Away)),
+  `Defensive shape` = shape_txt,
+  `Passing chains` = c(chain_sentence(Match_Home), chain_sentence(Match_Away)),
+  `Threat areas` = c(threat_sentence(Match_Home), threat_sentence(Match_Away)),
+  `Pass maps` = c(passmap_sentence(Match_Home), passmap_sentence(Match_Away))
+)
+
+htmltools::div(
+  style = "background:#FFFFFF;color:#1A1A1A;padding:0.6rem 0.9rem;font-size:0.95rem;line-height:1.55;",
+  lapply(names(report), function(h) {
+    htmltools::div(style = "margin-bottom:0.55rem;",
+      htmltools::tags$span(h, style = paste0("font-weight:700;color:", Color_Home, ";")),
+      htmltools::tags$ul(style = "margin:0.15rem 0 0 0;padding-left:1.2rem;",
+        lapply(report[[h]][nzchar(report[[h]])], function(t) htmltools::tags$li(htmltools::HTML(t)))))
+  })
+)
 ```
 
 
@@ -4285,7 +4442,7 @@ lineupdataAway
 MatchSummarySeasonData <- compute_summary(SeasonData, group_vars = c("Team_Group")) 
 
 MatchSummarySeasonData <- MatchSummarySeasonData %>%
-  select('Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'EPV % NPxG Con.')
+  select('Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100, 'EPV % NPxG Con.')
 
 MatchSummarySeasonHalfData <- compute_summary(SeasonData %>% mutate(Half = case_when(
   period == 1 ~ "First Half",
@@ -4296,22 +4453,22 @@ MatchSummarySeasonHalfData <- compute_summary(SeasonData %>% mutate(Half = case_
 ), group_vars = c("Half", "Team_Group"))
 
 MatchSummarySeasonHalfData <- MatchSummarySeasonHalfData %>%
-  select(Half, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'EPV % NPxG Con.')
+  select(Half, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100, 'EPV % NPxG Con.')
 
 MatchSummarySeasonPeriodData <- compute_summary(SeasonData, group_vars = c("Game_Period", "Team_Group"))
 
 MatchSummarySeasonPeriodData <- MatchSummarySeasonPeriodData %>%
-  select(Game_Period, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'ONT Shots' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'EPV % NPxG Con.')
+  select(Game_Period, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'ONT Shots' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100, 'EPV % NPxG Con.')
 
 MatchSummarySeasonGameStateData <- compute_summary(SeasonData, group_vars = c("Game_State", "Team_Group"))
 
 MatchSummarySeasonGameStateData <- MatchSummarySeasonGameStateData %>%
-  select(Game_State, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes,  'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'EPV % NPxG Con.')
+  select(Game_State, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes,  'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100, 'EPV % NPxG Con.')
 
 MatchSummaryGameNameData <- compute_summary(SeasonData, group_vars = c("game_name", "Team_Group"))
 
 MatchSummaryGameNameData <- MatchSummaryGameNameData %>%
-  select('Fixture' = game_name, Match_day, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes,  'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'EPV % NPxG Con.')
+  select('Fixture' = game_name, Match_day, 'Team' = Team_Group, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'Attempted Passes' = Attempted_Passes,  'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100, 'EPV % NPxG Con.')
 
 ```
 
@@ -4330,7 +4487,7 @@ MatchSummaryData <- MatchSummaryData %>%
 
 
 MatchSummaryData <- MatchSummaryData %>%
-  select('Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, PPDO, 'Possession Control' = Posession_Control)
+  select('Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, PPDO, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100)
 
 MatchSummaryHalfData <- compute_summary(plottingData %>% mutate(Half = case_when(
   period == 1 ~ "First Half",
@@ -4341,22 +4498,22 @@ MatchSummaryHalfData <- compute_summary(plottingData %>% mutate(Half = case_when
 ), group_vars = c("Half", "TeamName"))
 
 MatchSummaryHalfData <- MatchSummaryHalfData %>%
-  select(Half, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control)
+  select(Half, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100)
 
 MatchSummaryPeriodData <- compute_summary(plottingData, group_vars = c("Game_Period", "TeamName"))
 
 MatchSummaryPeriodData <- MatchSummaryPeriodData %>%
-  select(Game_Period, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'ONT Shots' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control)
+  select(Game_Period, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'ONT Shots' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100)
 
 MatchSummaryQuarterData <- compute_summary(plottingData, group_vars = c("Game_Quarter", "TeamName"))
 
 MatchSummaryQuarterData <- MatchSummaryQuarterData %>%
-  select(Game_Quarter, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'ONT Shots' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control)
+  select(Game_Quarter, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'ONT Shots' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes, 'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100)
 
 MatchSummaryGameStateData <- compute_summary(plottingData, group_vars = c("Game_State", "TeamName"))
 
 MatchSummaryGameStateData <- MatchSummaryGameStateData %>%
-  select(Game_State, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes,  'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control)
+  select(Game_State, 'Team' = TeamName, 'Possession %' = Possession, 'On Ball Time' = In_play_time, Touches, 'PKBox Touches' = PK_Box_Touches, 'Field Tilt %' = Field_Tilt, 'Total Shots' = TotalShots, 'OFF Shots' = OFShots, 'SoT' = OTShots, '6yrd box Shots' = SixYard_Box_Shots, 'PK Box Shots' = PK_Box_Shots, 'Outside Box Shots' = Out_Box_Shots, 'Blocked Shots' = Blocked_Shot, BCs, Goals, xG, NPxG, xGOT, EPV = TeamEPV, 'EPV % xG Con.', 'EPV % NPxG Con.', 'Attempted Passes' = Attempted_Passes,  'Successful Passes' = Successful_Passes, 'Pass Success %' = Pass_Success, 'Long Passes' = Long_Passes, 'Long Ball Rate' = Long_Pass_Rate,  'Crosses' = Cross_Passes, 'Cross Success %' = Cross_Success, Corners, 'Short Corners' = Short_Corners, 'Possession Control' = Posession_Control, 'Poss Control /100 Touches' = Poss_Control_100)
 
 ```
 
@@ -4534,7 +4691,6 @@ long_prob_matrix_max <- long_prob_matrix_max %>%
          Away = as.numeric(as.character(Away)))
 
 ```
-
 
 ## Match Summary {.tabset}
 ```{r}
@@ -5679,16 +5835,23 @@ if (focus_has_baseline) cat("\n\n## Match vs Season\n\n")
 #| label: match vs season dumbbell
 #| eval: !expr focus_has_baseline
 #| include: !expr focus_has_baseline
-#| fig-width: 7
-#| fig-height: 6.5
+#| fig-width: 9
+#| fig-height: 6
 #| fig-dpi: 200
 
 kpi_for <- c(Goals = "Goals", xG = "xG", xGOT = "xGOT", Shots = "Total Shots",
              `Shots on target` = "SoT", `Big chances` = "BCs", `Possession %` = "Possession %",
              `Field tilt %` = "Field Tilt %", `Box touches` = "PKBox Touches",
-             `Pass success %` = "Pass Success %", EPV = "EPV")
-kpi_against <- c(`Goals against` = "Goals", `xG against` = "xG", `Shots against` = "Total Shots")
+             `Pass success %` = "Pass Success %", EPV = "EPV",
+             `EPV to xG %` = "EPV % xG Con.")
+kpi_against <- c(`Goals against` = "Goals", `xG against` = "xG", `Shots against` = "Total Shots",
+                 `EPV against` = "EPV", `EPV to xG % against` = "EPV % xG Con.")
+kpi_offball_for <- c(`Poss. control /100 touches` = "Poss Control /100 Touches")
 lower_better <- names(kpi_against)
+# ball-winning counts come straight from compute_summary (not in the summary tables)
+kpi_def <- c(Interceptions = "Interceptions_Total", Recoveries = "Recoverys_Total",
+             `Tackles won` = "Tackles_Won", `Aerials won` = "Aerial_Won")
+off_ball_kpis <- c(names(kpi_def), names(kpi_offball_for), names(kpi_against))
 
 pull_kpis <- function(df, team_filter, map) {
   df <- df %>% filter(team_filter(Team))
@@ -5701,47 +5864,90 @@ pull_kpis <- function(df, team_filter, map) {
 is_focus <- function(t) t == Focus_Team
 is_opp   <- function(t) t != Focus_Team
 
-match_vals <- bind_rows(pull_kpis(MatchSummaryData, is_focus, kpi_for),
+match_vals <- bind_rows(pull_kpis(MatchSummaryData, is_focus, c(kpi_for, kpi_offball_for)),
                         pull_kpis(MatchSummaryData, is_opp, kpi_against)) %>%
   group_by(KPI) %>% summarise(match = sum(value, na.rm = TRUE), .groups = "drop")
-season_vals <- bind_rows(pull_kpis(season_games, is_focus, kpi_for),
+season_vals <- bind_rows(pull_kpis(season_games, is_focus, c(kpi_for, kpi_offball_for)),
                          pull_kpis(season_games, function(t) t == "All Oppo", kpi_against)) %>%
   group_by(KPI) %>%
   summarise(season = mean(value, na.rm = TRUE), lo = min(value, na.rm = TRUE),
             hi = max(value, na.rm = TRUE), games = n(), .groups = "drop")
 
+def_long <- function(df) {
+  bind_rows(lapply(names(kpi_def), function(k)
+    if (kpi_def[[k]] %in% names(df)) tibble(KPI = k, value = as.numeric(df[[kpi_def[[k]]]])) else NULL))
+}
+match_def <- compute_summary(plottingData, group_vars = c("TeamName")) %>%
+  ungroup() %>% filter(TeamName == Focus_Team) %>% def_long() %>%
+  group_by(KPI) %>% summarise(match = sum(value, na.rm = TRUE), .groups = "drop")
+season_def <- compute_summary(SeasonData %>% filter(as.character(Match_day) != as.character(MatchDay)),
+                              group_vars = c("game_name", "Team_Group")) %>%
+  ungroup() %>% filter(Team_Group == Focus_Team) %>% def_long() %>%
+  group_by(KPI) %>%
+  summarise(season = mean(value, na.rm = TRUE), lo = min(value, na.rm = TRUE),
+            hi = max(value, na.rm = TRUE), games = n(), .groups = "drop")
+match_vals  <- bind_rows(match_vals, match_def)
+season_vals <- bind_rows(season_vals, season_def)
+
 dumbbell <- match_vals %>%
   inner_join(season_vals, by = "KPI") %>%
-  mutate(KPI = factor(KPI, levels = c(names(kpi_for), names(kpi_against))),
+  mutate(KPI = factor(KPI, levels = c(names(kpi_for), off_ball_kpis)),
+         Side = ifelse(KPI %in% off_ball_kpis, "Off the ball", "On the ball"),
          better = ifelse(KPI %in% lower_better, match <= season, match >= season),
          Verdict = ifelse(better, "Better than average", "Worse than average"))
 lab <- function(v) ifelse(abs(v) >= 10, format(round(v, 0), nsmall = 0), format(round(v, 2), nsmall = 2))
 n_games <- max(dumbbell$games)
 
-ggplot(dumbbell, aes(y = 0)) +
-  geom_segment(aes(x = lo, xend = hi, yend = 0), colour = "grey85", linewidth = 3, lineend = "round") +
-  geom_segment(aes(x = season, xend = match, yend = 0), colour = "grey40", linewidth = 0.7) +
-  geom_point(aes(x = season), colour = "grey40", size = 2.6) +
-  geom_point(aes(x = match, fill = Verdict), shape = 21, colour = "black", size = 3.2) +
-  geom_text(aes(x = season, label = lab(season)), vjust = 2.1, size = 2, colour = "grey30") +
-  geom_text(aes(x = match, label = lab(match)), vjust = -1.3, size = 2.1, fontface = "bold") +
-  scale_fill_manual(values = c(`Better than average` = col_success, `Worse than average` = col_fail), name = NULL) +
-  scale_x_continuous(expand = expansion(mult = 0.25)) +
-  scale_y_continuous(limits = c(-1, 1)) +
-  facet_wrap(~ KPI, ncol = 1, scales = "free_x", strip.position = "left") +
-  labs(title = paste0(Focus_Team, " - This Match vs Season Average"),
-       subtitle = paste0(Match_Fixture, " | grey dot = average of ", n_games,
-                         " other games, grey bar = season range, coloured dot = this match"),
-       x = NULL, y = NULL, caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 7, legend_position = "top") +
-  theme(strip.placement = "outside",
-        strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7, face = "bold"),
-        strip.background = element_rect(fill = "snow", colour = NA),
-        axis.text = element_blank(), axis.ticks = element_blank(),
-        panel.spacing.y = unit(0.1, "lines"),
-        panel.grid = element_blank(),
-        legend.background = element_rect(fill = "snow", colour = NA),
-        legend.key = element_rect(fill = "snow", colour = NA))
+# one dumbbell panel per KPI; on-ball KPIs on the left, off-ball on the right
+plot_dumbbell <- function(df, heading, legend = "none", caption = NULL) {
+  ggplot(df, aes(y = 0)) +
+    geom_segment(aes(x = lo, xend = hi, yend = 0), colour = "grey85", linewidth = 3, lineend = "round") +
+    geom_segment(aes(x = season, xend = match, yend = 0), colour = "grey40", linewidth = 0.7) +
+    geom_point(aes(x = season), colour = "grey40", size = 2.6) +
+    geom_point(aes(x = match, fill = Verdict), shape = 21, colour = "black", size = 3.2) +
+    geom_text(aes(x = season, label = lab(season)), vjust = 2.1, size = 2, colour = "grey30") +
+    geom_text(aes(x = match, label = lab(match)), vjust = -1.3, size = 2.1, fontface = "bold") +
+    scale_fill_manual(values = c(`Better than average` = col_success, `Worse than average` = col_fail),
+                      name = NULL, drop = FALSE) +
+    scale_x_continuous(expand = expansion(mult = 0.25)) +
+    scale_y_continuous(limits = c(-1, 1)) +
+    facet_wrap(~ KPI, ncol = 1, scales = "free_x", strip.position = "left") +
+    labs(title = heading, x = NULL, y = NULL, caption = caption) +
+    theme_ai(title_size = 9, legend_position = legend) +
+    theme(strip.placement = "outside",
+          strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7, face = "bold"),
+          strip.background = element_rect(fill = "snow", colour = NA),
+          axis.text = element_blank(), axis.ticks = element_blank(),
+          panel.spacing.y = unit(0.1, "lines"),
+          panel.grid = element_blank(),
+          legend.background = element_rect(fill = "snow", colour = NA),
+          legend.key = element_rect(fill = "snow", colour = NA))
+}
+dumbbell <- dumbbell %>% mutate(Verdict = factor(Verdict, levels = c("Better than average", "Worse than average")))
+on_df  <- dumbbell %>% filter(Side == "On the ball") %>% droplevels()
+off_df <- dumbbell %>% filter(Side == "Off the ball") %>% droplevels()
+p_on  <- plot_dumbbell(on_df, "On the ball", legend = "top")
+p_off <- plot_dumbbell(off_df, "Off the ball", caption = My_caption)
+
+# draw the two halves side by side; the off-ball half is shorter, so it
+# is scaled to keep the panels the same height as the on-ball ones
+grid::grid.newpage()
+grid::grid.rect(gp = grid::gpar(fill = "snow", col = NA))
+grid::pushViewport(grid::viewport(layout = grid::grid.layout(2, 2, heights = grid::unit(c(0.09, 0.91), "npc"))))
+grid::grid.text(paste0(Focus_Team, " - This Match vs Season Average"),
+                x = 0.02, y = 0.68, just = "left",
+                vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1:2),
+                gp = grid::gpar(fontsize = 11, fontface = "bold"))
+grid::grid.text(paste0(Match_Fixture, " | grey dot = average of ", n_games,
+                       " other games, grey bar = season range, coloured dot = this match"),
+                x = 0.02, y = 0.22, just = "left",
+                vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1:2),
+                gp = grid::gpar(fontsize = 7))
+print(p_on, vp = grid::viewport(layout.pos.row = 2, layout.pos.col = 1))
+off_h <- min(1, (nrow(off_df) + 2.5) / (nrow(on_df) + 2.5))
+grid::pushViewport(grid::viewport(layout.pos.row = 2, layout.pos.col = 2))
+print(p_off, vp = grid::viewport(y = 1, height = off_h, just = "top"))
+grid::popViewport(2)
 ```
 
 
@@ -6908,6 +7114,239 @@ passing_sequencesAway_2nd_Table <- passing_sequencesAway_2nd_Table %>%
   arrange(factor(Pass_Chain_Length, levels = desired_order))
 ```
 
+## Receiving Passes
+### Home {.tabset}
+```{r}
+#| title: Home 1st Half Pass receiving Areas
+#| label: Home 1st Half Pass receiving Areas
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+#| height: 100%
+
+
+HomePRecievedHeatMapplot1Half <- plottingData %>%
+  filter(Successful_Passes == 1,
+         Short_Corners == 0,
+         Corners == 0,
+         TeamName == Match_Home, 
+         period == 1) %>%
+  ggplot(aes(x = finalX, y = finalY)) +
+  pitch_base(zone_lwd = 0.2, tile = TRUE) +
+  
+  #geometrics
+  #plot heat map
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+
+    #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Home," Open Play receiving Pass Heat Map \n1st Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
+       caption =  My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 8)
+
+
+HomePRecievedHeatMapplot1Half
+
+```
+```{r}
+#| title: Home 2nd Half Pass receiving Areas
+#| label: Home 2nd Half Pass receiving Areas
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+#| height: 100%
+
+HomePRecievedHeatMapplot2Half <- plottingData %>%
+  filter(Successful_Passes == 1,
+         Short_Corners == 0,
+         Corners == 0,
+         TeamName == Match_Home, 
+         period == 2) %>%
+  ggplot(aes(x = finalX, y = finalY)) +
+  pitch_base(zone_lwd = 0.2, tile = TRUE) +
+  
+  #geometrics
+
+  #plot heat map
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Home," Open Play receiving Pass Heat Map \n2nd Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
+       caption =  My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 8)
+
+
+HomePRecievedHeatMapplot2Half
+
+
+```
+```{r}
+#| title: Home Up to 1st Sub Pass receiving Areas
+#| label: Home Up to 1st Sub Pass receiving Areas
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+#| height: 100%
+
+
+HomePRecievedHeatMapplot1Sub <- plottingData %>%
+  filter(Successful_Passes == 1,
+         Short_Corners == 0,
+         Corners == 0,
+         TeamName == Match_Home, 
+         between(minute, 00, firstSubHome)) %>%
+  ggplot(aes(x = finalX, y = finalY)) +
+  pitch_base(zone_lwd = 0.2, tile = TRUE) +
+  
+  #geometrics
+  #plot heat map
+  stat_density_2d(aes(#color = after_stat(level), 
+    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+  
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Home," Open Play receiving Pass Heat Map \nUp to 1st Subs"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
+       caption =  My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 8)
+
+
+HomePRecievedHeatMapplot1Sub
+```
+### Away {.tabset}
+```{r}
+#| title: Away 1st Half Pass receiving Areas
+#| label: Away 1st Half Pass receiving Areas
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+#| height: 100%
+
+AwayPRecievedHeatMapplot1Half <- plottingData %>%
+  filter(Successful_Passes == 1,
+         Short_Corners == 0,
+         Corners == 0,
+         TeamName == Match_Away, 
+         period == 1) %>%
+  ggplot(aes(x = finalX, y = finalY)) +
+  pitch_base(zone_lwd = 0.2, tile = TRUE) +
+  #geometrics
+  #plot heat map
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Away," Open Play receiving Pass Heat Map \n1st Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
+       caption =  My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 8)
+
+AwayPRecievedHeatMapplot1Half
+```
+```{r}
+#| title: Away 2nd Half Pass receiving Areas
+#| label: Away 2nd Half Pass receiving Areas
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+#| height: 100%
+
+AwayPRecievedHeatMapplot2Half <- plottingData %>%
+  filter(Successful_Passes == 1,
+         Short_Corners == 0,
+         Corners == 0,
+         TeamName == Match_Away, 
+         period == 2) %>%
+  ggplot(aes(x = finalX, y = finalY)) +
+  pitch_base(zone_lwd = 0.2, tile = TRUE) +
+  
+  #geometrics
+
+  #plot heat map
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Away," Open Play receiving Pass Heat Map \n2nd Half"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
+       caption =  My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 8)
+
+AwayPRecievedHeatMapplot2Half
+
+```
+```{r}
+#| title: Away Up to 1st Sub Pass receiving Areas
+#| label: Away Up to 1st Sub Pass receiving Areas
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 4
+#| fig-height: 3.6
+#| fig-dpi: 200
+#| height: 100%
+
+
+AwayPRecievedHeatMapplot1Sub <- plottingData %>%
+  filter(Successful_Passes == 1,
+         Short_Corners == 0,
+         Corners == 0,
+         TeamName == Match_Away, 
+         between(minute, 00, firstSubAway)) %>%
+  ggplot(aes(x = finalX, y = finalY)) +
+  pitch_base(zone_lwd = 0.2, tile = TRUE) +
+  
+  #geometrics
+  #plot heat map
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
+
+  #set scales
+  scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+  scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
+  
+  #formatting
+  labs(title = paste0(Match_Away," Open Play receiving Pass Heat Map \nUp to 1st Subs"), 
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
+       caption =  My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 8)
+
+AwayPRecievedHeatMapplot1Sub
+
+```
+
 ## Passing Chains Plots {.flow}
 ```{r}
 #| label: Home passing chains all in
@@ -7777,239 +8216,6 @@ Long_Passes_Away_Plot
 
 
 ```
-## Receiving Passes
-### Home {.tabset}
-```{r}
-#| title: Home 1st Half Pass receiving Areas
-#| label: Home 1st Half Pass receiving Areas
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-#| height: 100%
-
-
-HomePRecievedHeatMapplot1Half <- plottingData %>%
-  filter(Successful_Passes == 1,
-         Short_Corners == 0,
-         Corners == 0,
-         TeamName == Match_Home, 
-         period == 1) %>%
-  ggplot(aes(x = finalX, y = finalY)) +
-  pitch_base(zone_lwd = 0.2, tile = TRUE) +
-  
-  #geometrics
-  #plot heat map
-  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-
-    #set scales
-  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
-  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
-  
-  #formatting
-  labs(title = paste0(Match_Home," Open Play receiving Pass Heat Map \n1st Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
-       caption =  My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8)
-
-
-HomePRecievedHeatMapplot1Half
-
-```
-```{r}
-#| title: Home 2nd Half Pass receiving Areas
-#| label: Home 2nd Half Pass receiving Areas
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-#| height: 100%
-
-HomePRecievedHeatMapplot2Half <- plottingData %>%
-  filter(Successful_Passes == 1,
-         Short_Corners == 0,
-         Corners == 0,
-         TeamName == Match_Home, 
-         period == 2) %>%
-  ggplot(aes(x = finalX, y = finalY)) +
-  pitch_base(zone_lwd = 0.2, tile = TRUE) +
-  
-  #geometrics
-
-  #plot heat map
-  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-  
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
-  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
-  
-  #formatting
-  labs(title = paste0(Match_Home," Open Play receiving Pass Heat Map \n2nd Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
-       caption =  My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8)
-
-
-HomePRecievedHeatMapplot2Half
-
-
-```
-```{r}
-#| title: Home Up to 1st Sub Pass receiving Areas
-#| label: Home Up to 1st Sub Pass receiving Areas
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-#| height: 100%
-
-
-HomePRecievedHeatMapplot1Sub <- plottingData %>%
-  filter(Successful_Passes == 1,
-         Short_Corners == 0,
-         Corners == 0,
-         TeamName == Match_Home, 
-         between(minute, 00, firstSubHome)) %>%
-  ggplot(aes(x = finalX, y = finalY)) +
-  pitch_base(zone_lwd = 0.2, tile = TRUE) +
-  
-  #geometrics
-  #plot heat map
-  stat_density_2d(aes(#color = after_stat(level), 
-    fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-  
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
-  scale_color_gradientn(colors = ColorScale_HomeC, trans = "sqrt") +
-  
-  #formatting
-  labs(title = paste0(Match_Home," Open Play receiving Pass Heat Map \nUp to 1st Subs"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
-       caption =  My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8)
-
-
-HomePRecievedHeatMapplot1Sub
-```
-### Away {.tabset}
-```{r}
-#| title: Away 1st Half Pass receiving Areas
-#| label: Away 1st Half Pass receiving Areas
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-#| height: 100%
-
-AwayPRecievedHeatMapplot1Half <- plottingData %>%
-  filter(Successful_Passes == 1,
-         Short_Corners == 0,
-         Corners == 0,
-         TeamName == Match_Away, 
-         period == 1) %>%
-  ggplot(aes(x = finalX, y = finalY)) +
-  pitch_base(zone_lwd = 0.2, tile = TRUE) +
-  #geometrics
-  #plot heat map
-  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
-  scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
-  
-  #formatting
-  labs(title = paste0(Match_Away," Open Play receiving Pass Heat Map \n1st Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
-       caption =  My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8)
-
-AwayPRecievedHeatMapplot1Half
-```
-```{r}
-#| title: Away 2nd Half Pass receiving Areas
-#| label: Away 2nd Half Pass receiving Areas
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-#| height: 100%
-
-AwayPRecievedHeatMapplot2Half <- plottingData %>%
-  filter(Successful_Passes == 1,
-         Short_Corners == 0,
-         Corners == 0,
-         TeamName == Match_Away, 
-         period == 2) %>%
-  ggplot(aes(x = finalX, y = finalY)) +
-  pitch_base(zone_lwd = 0.2, tile = TRUE) +
-  
-  #geometrics
-
-  #plot heat map
-  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
-  scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
-  
-  #formatting
-  labs(title = paste0(Match_Away," Open Play receiving Pass Heat Map \n2nd Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
-       caption =  My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8)
-
-AwayPRecievedHeatMapplot2Half
-
-```
-```{r}
-#| title: Away Up to 1st Sub Pass receiving Areas
-#| label: Away Up to 1st Sub Pass receiving Areas
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 4
-#| fig-height: 3.6
-#| fig-dpi: 200
-#| height: 100%
-
-
-AwayPRecievedHeatMapplot1Sub <- plottingData %>%
-  filter(Successful_Passes == 1,
-         Short_Corners == 0,
-         Corners == 0,
-         TeamName == Match_Away, 
-         between(minute, 00, firstSubAway)) %>%
-  ggplot(aes(x = finalX, y = finalY)) +
-  pitch_base(zone_lwd = 0.2, tile = TRUE) +
-  
-  #geometrics
-  #plot heat map
-  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.5, adjust = 0.5, linewidth = 0.5) +
-
-  #set scales
-  scale_fill_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
-  scale_color_gradientn(colors = ColorScale_AwayC, trans = "sqrt") +
-  
-  #formatting
-  labs(title = paste0(Match_Away," Open Play receiving Pass Heat Map \nUp to 1st Subs"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Receieved Passes, \nDirection of Attack Left to Right"),
-       caption =  My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8)
-
-AwayPRecievedHeatMapplot1Sub
-
-```
-
 ## Set Pieces
 ```{r}
 #| title: Set-Piece Summary
@@ -8080,56 +8286,6 @@ plot_sp_deliveries(Match_Away, "Corner")
 #| fig-dpi: 200
 
 plot_sp_deliveries(Match_Away, "Free kick")
-```
-
-## Shot-Creating Sequences
-```{r}
-#| title: Where Shots Came From
-#| label: shot sequence origins
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-origin_levels <- c("Open-play regain", "Keeper", "Goal kick", "Throw-in", "Free kick", "Corner", "Kick-off")
-seq_origin <- shot_seq %>%
-  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away)),
-         start_type = factor(coalesce(start_type, "Open-play regain"), levels = origin_levels)) %>%
-  group_by(TeamName, start_type, .drop = FALSE) %>%
-  summarise(xG = sum(xg), Shots = n(), Goals = sum(Goal), .groups = "drop") %>%
-  filter(start_type %in% unique(coalesce(shot_seq$start_type, "Open-play regain")))
-
-ggplot(seq_origin, aes(x = xG, y = start_type, fill = TeamName)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7, colour = "#454545", linewidth = 0.2) +
-  geom_text(aes(label = ifelse(Shots > 0, paste0(Shots, " shots", ifelse(Goals > 0, paste0(", ", Goals, " goals"), "")), "")),
-            position = position_dodge(width = 0.8), hjust = -0.1, size = 2.1) +
-  scale_fill_manual(values = team_cols, name = NULL) +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.35))) +
-  labs(title = "Shot-Creating Sequences - How They Started",
-       subtitle = paste0(Match_Fixture, " | xG by how the possession sequence began"),
-       x = "xG", y = NULL, caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7, legend_position = "top") +
-  theme(panel.grid.major.x = element_line(colour = "grey88", linewidth = 0.3),
-        legend.background = element_rect(fill = "snow", colour = NA))
-```
-
-```{r}
-#| title: Sequence Summary
-#| label: shot sequence summary
-
-seq_summary <- shot_seq %>%
-  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))) %>%
-  group_by(Team = TeamName) %>%
-  summarise(Shots = n(), Goals = sum(Goal), xG = round(sum(xg), 2),
-            `Median passes` = median(Passes), `Median duration (s)` = median(Duration),
-            `From regains %` = round(100 * mean(start_type == "Open-play regain", na.rm = TRUE)),
-            `10+ pass sequences` = sum(Passes >= 10),
-            `Under 10s` = sum(Duration < 10), .groups = "drop") %>%
-  mutate(Team = as.character(Team))
-
-ai_gt(seq_summary %>% mutate(Group = Team), "Shot-Creating Sequences", group = "Group", rowname = "Team") %>%
-  fmt_number(columns = "xG", decimals = 2) %>%
-  gt_team_groups(seq_summary$Team) %>%
-  tab_footnote("A sequence runs from the moment a team gains the ball (or restarts from a dead ball) until the other team touches it.")
 ```
 
 ## Shot Sequence Detail {.flow}
@@ -8446,8 +8602,10 @@ MatchSummaryPLayerData <- MatchSummaryPLayerData %>%
          Failed_Cross = round(Cross_Passes - Successful_Cross, 2),
          Failed_Dribble = round(Dribbles_Total - Dribbles_Won, 2),
          Poss_Gained = round(Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost), 2),
-         Poss_Lost = (Mis_Control + Failed_Pass + Failed_Cross + Failed_Dribble + OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost),
-         Posession_Control = (Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost) - (Mis_Control + Dispossessed_Total + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost  + OFShots + Blocked_Shot + Offside_Lost)),) %>%
+         Poss_Lost = (Mis_Control + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost + OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost),
+         Posession_Control = (Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost) - (Mis_Control + Dispossessed_Total + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost  + OFShots + Blocked_Shot + Offside_Lost)),
+         Poss_Control_100 = ifelse(Touches > 0, round(100 * Posession_Control / Touches, 1), 0),
+         Low_Touches = Touches < min_touches_pc) %>%
   mutate_all(~ ifelse(is.na(.), 0, .))
 
 PlayerDefEPVData <- plottingData %>%
@@ -8575,7 +8733,9 @@ MatchSummaryPLayerDefensiveData <- MatchSummaryPLayerDefensiveData %>%
          'EPV Faced' =  EPV_Faced, 
          'EPV Won'  = EPV_Won, 
          'EPV Lost' = EPV_Lost,
-         'Possession Control' = Posession_Control)
+         'Possession Control' = Posession_Control,
+         'Poss Control /100 Touches' = Poss_Control_100,
+         Low_Touches)
 
 #data wrangling for player profile plots
 Player_Summary_plot_data <- MatchSummaryPLayerProfileData %>%
@@ -8842,8 +9002,10 @@ MatchSummaryPLayerSeasonData <- MatchSummaryPLayerSeasonData %>%
          Failed_Cross = round(Cross_Passes - Successful_Cross, 2),
          Failed_Dribble = round(Dribbles_Total - Dribbles_Won, 2),
          Poss_Gained = round(Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost), 2),
-         Poss_Lost = (Mis_Control + Failed_Pass + Failed_Cross + Failed_Dribble + OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost),
-         Posession_Control = (Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost) - (Mis_Control + Dispossessed_Total + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost  + OFShots + Blocked_Shot + Offside_Lost)),) %>%
+         Poss_Lost = (Mis_Control + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost + OFShots + Blocked_Shot + Dispossessed_Total + Offside_Lost),
+         Posession_Control = (Interceptions_Total + Recoverys_Total + (Tackles_Won - Tackles_Lost) + (Aerial_Won - Aerial_Lost) - (Mis_Control + Dispossessed_Total + UnSuccessful_Passes + UnSuccessful_Cross + Dribbles_Lost  + OFShots + Blocked_Shot + Offside_Lost)),
+         Poss_Control_100 = ifelse(Touches > 0, round(100 * Posession_Control / Touches, 1), 0),
+         Low_Touches = Touches < min_touches_pc) %>%
   mutate_all(~ ifelse(is.na(.), 0, .))
 
 DefEPVData <- SeasonData %>%
@@ -9015,7 +9177,9 @@ MatchSummaryPLayerDefensiveSeasonData <- MatchSummaryPLayerDefensiveSeasonData %
          'EPV Faced' =  EPV_Faced, 
          'EPV Won'  = EPV_Won, 
          'EPV Lost' = EPV_Lost,
-         'Possession Control' = Posession_Control)
+         'Possession Control' = Posession_Control,
+         'Poss Control /100 Touches' = Poss_Control_100,
+         Low_Touches)
 
 ########### for P90 data
 
@@ -9185,7 +9349,9 @@ MatchSummaryPLayerDefensiveSeasonDataP90 <- MatchSummaryPLayerDefensiveSeasonDat
          'EPV Faced' =  EPV_Faced, 
          'EPV Won'  = EPV_Won, 
          'EPV Lost' = EPV_Lost,
-         'Possession Control' = Posession_Control)
+         'Possession Control' = Posession_Control,
+         'Poss Control /100 Touches' = Poss_Control_100,
+         Low_Touches)
 ```
 
 
@@ -14940,6 +15106,48 @@ AwayPPDATimePlot <- AwayPPDAPlotData %>%
 AwayPPDATimePlot
 
 ```
+## PPDA (Standard Definition)
+```{r}
+#| title: PPDA Table
+#| label: proper ppda table
+
+ai_gt(ppda_proper, "PPDA - Opposition Passes in Their Own 60% per Defensive Action",
+      subtitle = paste0(Match_Fixture, " | dashboard PPDA (all passes / all defensive actions): ",
+                        Match_Home, " ", HomePPDA, ", ", Match_Away, " ", AwayPPDA),
+      rowname = "Period") %>%
+  gt_team_spanners() %>%
+  fmt_number(columns = ends_with("PPDA"), decimals = 2) %>%
+  tab_footnote("Lower PPDA = more intense pressing. Defensive actions = tackles, interceptions, challenges and fouls committed in the defending team's attacking 60% of the pitch.")
+```
+
+```{r}
+#| title: PPDA by Quarter
+#| label: proper ppda chart
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+ppda_q <- ppda_proper %>%
+  filter(grepl("Quarter", Period)) %>%
+  select(Period, ends_with("| PPDA")) %>%
+  pivot_longer(-Period, names_to = "TeamName", values_to = "PPDA") %>%
+  mutate(TeamName = sub(" \\| PPDA$", "", TeamName))
+
+ggplot(ppda_q, aes(x = Period, y = PPDA, fill = TeamName)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, colour = "#454545", linewidth = 0.2) +
+  geom_text(aes(label = ifelse(is.na(PPDA), "", format(PPDA, nsmall = 2))), position = position_dodge(width = 0.8),
+            vjust = -0.4, size = 2.2) +
+  scale_fill_manual(values = team_cols, name = NULL) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(title = "PPDA by Quarter (lower = more pressing)",
+       subtitle = paste0(Match_Fixture, " | opposition passes in their own 60% per defensive action"),
+       x = NULL, y = "PPDA", caption = My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7, legend_position = "top") +
+  theme(panel.grid.major.y = element_line(colour = "grey88", linewidth = 0.3),
+        legend.background = element_rect(fill = "snow", colour = NA))
+```
+
+
 ## DA Heat maps {.flow}
 ### DA Heatmap Home  {.tabset}
 ```{r}
@@ -17186,48 +17394,6 @@ plot_block(Match_Home)
 
 plot_block(Match_Away)
 ```
-
-## PPDA (Standard Definition)
-```{r}
-#| title: PPDA Table
-#| label: proper ppda table
-
-ai_gt(ppda_proper, "PPDA - Opposition Passes in Their Own 60% per Defensive Action",
-      subtitle = paste0(Match_Fixture, " | dashboard PPDA (all passes / all defensive actions): ",
-                        Match_Home, " ", HomePPDA, ", ", Match_Away, " ", AwayPPDA),
-      rowname = "Period") %>%
-  gt_team_spanners() %>%
-  fmt_number(columns = ends_with("PPDA"), decimals = 2) %>%
-  tab_footnote("Lower PPDA = more intense pressing. Defensive actions = tackles, interceptions, challenges and fouls committed in the defending team's attacking 60% of the pitch.")
-```
-
-```{r}
-#| title: PPDA by Quarter
-#| label: proper ppda chart
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-ppda_q <- ppda_proper %>%
-  filter(grepl("Quarter", Period)) %>%
-  select(Period, ends_with("| PPDA")) %>%
-  pivot_longer(-Period, names_to = "TeamName", values_to = "PPDA") %>%
-  mutate(TeamName = sub(" \\| PPDA$", "", TeamName))
-
-ggplot(ppda_q, aes(x = Period, y = PPDA, fill = TeamName)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7, colour = "#454545", linewidth = 0.2) +
-  geom_text(aes(label = ifelse(is.na(PPDA), "", format(PPDA, nsmall = 2))), position = position_dodge(width = 0.8),
-            vjust = -0.4, size = 2.2) +
-  scale_fill_manual(values = team_cols, name = NULL) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
-  labs(title = "PPDA by Quarter (lower = more pressing)",
-       subtitle = paste0(Match_Fixture, " | opposition passes in their own 60% per defensive action"),
-       x = NULL, y = "PPDA", caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7, legend_position = "top") +
-  theme(panel.grid.major.y = element_line(colour = "grey88", linewidth = 0.3),
-        legend.background = element_rect(fill = "snow", colour = NA))
-```
-
 
 # Pressing Analysis
 ``` {r}
@@ -19658,6 +19824,56 @@ Away_S_plotWT_I
 
 ```
 
+## Shot-Creating Sequences
+```{r}
+#| title: Where Shots Came From
+#| label: shot sequence origins
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+origin_levels <- c("Open-play regain", "Keeper", "Goal kick", "Throw-in", "Free kick", "Corner", "Kick-off")
+seq_origin <- shot_seq %>%
+  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away)),
+         start_type = factor(coalesce(start_type, "Open-play regain"), levels = origin_levels)) %>%
+  group_by(TeamName, start_type, .drop = FALSE) %>%
+  summarise(xG = sum(xg), Shots = n(), Goals = sum(Goal), .groups = "drop") %>%
+  filter(start_type %in% unique(coalesce(shot_seq$start_type, "Open-play regain")))
+
+ggplot(seq_origin, aes(x = xG, y = start_type, fill = TeamName)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, colour = "#454545", linewidth = 0.2) +
+  geom_text(aes(label = ifelse(Shots > 0, paste0(Shots, " shots", ifelse(Goals > 0, paste0(", ", Goals, " goals"), "")), "")),
+            position = position_dodge(width = 0.8), hjust = -0.1, size = 2.1) +
+  scale_fill_manual(values = team_cols, name = NULL) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.35))) +
+  labs(title = "Shot-Creating Sequences - How They Started",
+       subtitle = paste0(Match_Fixture, " | xG by how the possession sequence began"),
+       x = "xG", y = NULL, caption = My_caption) +
+  theme_ai(title_size = 10, subtitle_size = 7, axis = TRUE, axis_size = 7, legend_position = "top") +
+  theme(panel.grid.major.x = element_line(colour = "grey88", linewidth = 0.3),
+        legend.background = element_rect(fill = "snow", colour = NA))
+```
+
+```{r}
+#| title: Sequence Summary
+#| label: shot sequence summary
+
+seq_summary <- shot_seq %>%
+  mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))) %>%
+  group_by(Team = TeamName) %>%
+  summarise(Shots = n(), Goals = sum(Goal), xG = round(sum(xg), 2),
+            `Median passes` = median(Passes), `Median duration (s)` = median(Duration),
+            `From regains %` = round(100 * mean(start_type == "Open-play regain", na.rm = TRUE)),
+            `10+ pass sequences` = sum(Passes >= 10),
+            `Under 10s` = sum(Duration < 10), .groups = "drop") %>%
+  mutate(Team = as.character(Team))
+
+ai_gt(seq_summary %>% mutate(Group = Team), "Shot-Creating Sequences", group = "Group", rowname = "Team") %>%
+  fmt_number(columns = "xG", decimals = 2) %>%
+  gt_team_groups(seq_summary$Team) %>%
+  tab_footnote("A sequence runs from the moment a team gains the ball (or restarts from a dead ball) until the other team touches it.")
+```
+
 ## Goalkeepers
 ### Home
 ```{r}
@@ -19769,10 +19985,8 @@ plot_gk_actions <- function(team) {
   ggplot(d) +
     pitch_base() +
     annotate("rect", xmin = 0, xmax = 17, ymin = 21.1, ymax = 78.9, fill = NA, colour = "black", linewidth = 0.5) +
-    geom_point(aes(x = x, y = y, shape = Action,
-                   colour = ifelse(Sweeper, "Outside box / sweeper", "Inside box")), size = 2.2, stroke = 0.9) +
+    geom_point(aes(x = x, y = y, shape = Action), colour = team_col(team), size = 2.4, stroke = 1) +
     scale_shape_manual(values = c(Save = 16, Claim = 17, Punch = 15, `Pick-up` = 1, Smother = 18, Sweeper = 8, `Other defensive` = 4)) +
-    scale_colour_manual(values = c(`Outside box / sweeper` = team_col(team), `Inside box` = "grey30")) +
     coord_cartesian(xlim = c(0, 50)) +
     pitch_title(paste0(team, " Goalkeeper Actions"),
                 paste0(Match_Fixture, " | saves, claims, punches, pick-ups and sweeper actions"))
@@ -19852,6 +20066,8 @@ plot_gk_actions(Match_Away)
 **Field Tilt %:** share of the two teams' combined final-third touches.
 
 **Possession Control:** possession won (interceptions, recoveries, net tackles, net aerials) minus possession lost (miscontrols, dispossessions, failed passes, crosses and dribbles, off-target and blocked shots, offsides).
+
+**Poss Control /100 Touches:** Possession Control divided by touches x 100, so players and teams with different amounts of the ball can be compared. In the player tables it is greyed out for players with fewer than 20 touches (set by `min_touches_pc`).
 
 [ADD DEFINITION - any interpretation notes]
 :::
@@ -19945,7 +20161,7 @@ Own goals are not shots, so they are not simulated - the actual score can sit ou
 ::: {.card .method-card title="Substitution impact and season baseline"}
 **Substitution windows:** the match split at each substitution (subs within 3 minutes are grouped). xG and EPV are per 10 minutes so windows of different length compare; field tilt and PPDA are calculated within the window.
 
-**Match vs season:** this match against the average of the focus team's other games in the season database (grey bar = range). Blue = better than average, red = worse; for goals, xG and shots against, lower is better.
+**Match vs season:** this match against the average of the focus team's other games in the season database (grey bar = range). Blue = better than average, red = worse; for goals, xG, shots, EPV and EPV to xG % against, lower is better. Off-ball side also shows interceptions, recoveries, tackles won and aerials won.
 
 [ADD DEFINITION]
 :::
