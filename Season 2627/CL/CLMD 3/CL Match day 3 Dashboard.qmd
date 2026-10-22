@@ -3763,16 +3763,29 @@ sp_summary <- sp_summary_team(Match_Home) %>%
 
 # ---- carries: the ball moved between receiving it (end of the previous
 #      same-team event) and the next action, within one sequence, 5m+ ----
-carries <- ev %>%
-  filter(on_ball) %>%
-  mutate(prev_ok = dplyr::lag(is_pass & out == 1),
-         c_x = ifelse(coalesce(prev_ok, FALSE), dplyr::lag(end_x), dplyr::lag(x)),
-         c_y = ifelse(coalesce(prev_ok, FALSE), dplyr::lag(end_y), dplyr::lag(y)),
-         same_seq = coalesce(seq_id == dplyr::lag(seq_id), FALSE) & !dead_ball,
-         c_dist = sqrt(((x - c_x) * 1.05)^2 + ((y - c_y) * 0.68)^2)) %>%
-  filter(same_seq, coalesce(c_dist >= 5, FALSE)) %>%
-  transmute(.row, TeamName, playerId, period, x = c_x, y = c_y, end_x = x, end_y = y,
-            Kind = "Carry", Success = TRUE)
+# Use the pipeline's carries when the match file has them (Carry_Start_X/Y,
+# added in the corrected Match_Event_Data_Analysis_V5.R); otherwise fall back
+# to the dashboard's own carry definition for files processed earlier.
+pipeline_carries <- all(c("Carry_Start_X", "Carry_Start_Y", "C_End_point_X", "C_End_point_Y") %in% names(ev))
+carries <- if (pipeline_carries) {
+  ev %>%
+    filter(num0(ev, "Attempted_Carries") == 1) %>%
+    transmute(.row, TeamName, playerId, period,
+              x = suppressWarnings(as.numeric(Carry_Start_X)), y = suppressWarnings(as.numeric(Carry_Start_Y)),
+              end_x = suppressWarnings(as.numeric(C_End_point_X)), end_y = suppressWarnings(as.numeric(C_End_point_Y)),
+              Kind = "Carry", Success = coalesce(suppressWarnings(as.numeric(Successful_Carries)), 0) == 1)
+} else {
+  ev %>%
+    filter(on_ball) %>%
+    mutate(prev_ok = dplyr::lag(is_pass & out == 1),
+           c_x = ifelse(coalesce(prev_ok, FALSE), dplyr::lag(end_x), dplyr::lag(x)),
+           c_y = ifelse(coalesce(prev_ok, FALSE), dplyr::lag(end_y), dplyr::lag(y)),
+           same_seq = coalesce(seq_id == dplyr::lag(seq_id), FALSE) & !dead_ball,
+           c_dist = sqrt(((x - c_x) * 1.05)^2 + ((y - c_y) * 0.68)^2)) %>%
+    filter(same_seq, coalesce(c_dist >= 5, FALSE)) %>%
+    transmute(.row, TeamName, playerId, period, x = c_x, y = c_y, end_x = x, end_y = y,
+              Kind = "Carry", Success = TRUE)
+}
 
 # ---- box and final-third entries (open play) ----------------------
 entries <- bind_rows(
@@ -3980,7 +3993,7 @@ pitch_title <- function(title, subtitle = Match_Fixture) {
 }
 ```
 
-## Score Summary {height="320px"}
+## Match Result {height="320px"}
 
 ```{r}
 #| title: Result
@@ -4070,7 +4083,7 @@ list(icon = "arrow-left-right", color = "light",
      value = paste0(HomeAbbr, " ", HomeEPVxG, "% \u2013 ", AwayEPVxG, "% ", AwayAbbr))
 ```
 
-## xG Race Chart {height="560px"}
+## xG race Chart {height="560px"}
 
 ```{r}
 #| title: xG Race
@@ -4691,6 +4704,7 @@ long_prob_matrix_max <- long_prob_matrix_max %>%
          Away = as.numeric(as.character(Away)))
 
 ```
+
 
 ## Match Summary {.tabset}
 ```{r}
@@ -18743,7 +18757,7 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
 
 ```
 
-# xG & Shot Analysis
+# Shot Analysis
 ## xG Line
 ```{r}
 #| label: Home xG Race line
@@ -20141,7 +20155,7 @@ Own goals are not shots, so they are not simulated - the actual score can sit ou
 
 **Set pieces:** corners, free kicks and throw-ins from the Opta corner/free-kick flags and qualifiers 5, 6 and 107. A **short corner** is the Short_Corners flag or a corner pass under 20m. **First contact** = the team of the next event within 8 seconds (aerial duels go to the winner); none if the ball goes out first. **Set-piece xG** uses the shot's situation where available, otherwise the start type of its sequence.
 
-**Box / final-third entries:** open-play passes and carries starting outside the box (or below the final third) and ending inside it. Channel = where the action started: wings (outer 21.1%), half-spaces, central. A **carry** is the ball moved 5m+ between where a player received it (end of the previous same-team event) and his next action, within one sequence.
+**Box / final-third entries:** open-play passes and carries starting outside the box (or below the final third) and ending inside it. Channel = where the action started: wings (outer 21.1%), half-spaces, central. A **carry** is the ball moved 5m+ between where a player received it (end of the previous same-team event) and his next on-ball action, within 10 seconds. Taken from the processing pipeline (Carry_Start_X/Y to C_End_point_X/Y); files processed before that fix use the dashboard's own equivalent definition.
 
 [ADD DEFINITION - anything you want to add]
 :::

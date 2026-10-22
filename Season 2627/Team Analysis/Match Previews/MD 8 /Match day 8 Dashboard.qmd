@@ -68,13 +68,13 @@ library(rlang)
 
 ###############
 #set away
-Match_Away <- paste0("Brentford")
+Match_Home <- paste0("Brighton")
 
 #Set Home
-Match_Home <- paste0("Aston Villa")
+Match_Away <- paste0("Crystal Palace")
 
 #set match date
-Game_date <- paste("10-10-2026")
+Game_date <- paste("18-10-2026")
 
 #set Game name
 GameName <- paste0(Match_Home," vs ", Match_Away)
@@ -88,16 +88,16 @@ DataBaseName <- paste0("EPLComp_LFC_Games_2627")
 ######################
 #set colours
 #set Home color
-Color_Away <- paste("red")
+Color_Away <- paste("blue")
 
 #set home text color
-Color_Away_Text <- paste("black")
+Color_Away_Text <- paste("red")
 
 #set Away color
-Color_Home <- paste("#8B1C62")
+Color_Home <- paste("royalblue")
 
 #set Away text
-Color_Home_Text <- paste("#E0FFFF")
+Color_Home_Text <- paste("yellow")
 
 #####################
 #load fonts
@@ -17591,7 +17591,7 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
 
 ```
 
-# xG & Shot Analysis
+# Shot Analysis
 ## xG Line
 ```{r}
 #| label: Home xG Race line
