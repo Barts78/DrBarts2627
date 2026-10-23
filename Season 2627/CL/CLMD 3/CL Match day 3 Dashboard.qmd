@@ -387,7 +387,10 @@ period_selector <- function(plots, id, color = "#454545", text_color = "white",
   plots <- plots[!vapply(plots, is.null, logical(1))]
   imgs <- lapply(seq_along(plots), function(i) {
     f <- tempfile(fileext = ".png")
-    ggsave(f, plots[[i]], width = width, height = height, dpi = dpi, bg = "snow")
+    # warnings/messages from rendering would become extra chunk outputs and
+    # knock the card title off, so keep them quiet
+    suppressWarnings(suppressMessages(
+      ggsave(f, plots[[i]], width = width, height = height, dpi = dpi, bg = "snow")))
     htmltools::tags$img(src = knitr::image_uri(f), class = "ps-img",
                         `data-idx` = i, alt = names(plots)[i],
                         style = if (i > 1) "display:none;" else NULL)
@@ -2774,6 +2777,22 @@ edges <- edgelist %>%
   ) %>%
   filter(Total_Passes >= passes)
 
+# Line colour = players' overall pass completion within each facet (same rule
+# as the non-facet maps: link = average of its two players, weighted by the
+# completed passes each played on that link)
+PlayerCompletion <- nodes %>%
+  transmute(playerId, !!facet_col,
+            Completion = if_else(Attempted_Passes > 0, Successful_Passes / Attempted_Passes, NA_real_))
+
+LinkCompletion <- edgelist %>%
+  mutate(player1 = pmin(from, to), player2 = pmax(from, to)) %>%
+  left_join(PlayerCompletion, by = join_by(from == playerId, !!facet_col)) %>%
+  group_by(player1, player2, !!facet_col) %>%
+  summarise(Pass_Suc = stats::weighted.mean(Completion, n, na.rm = TRUE), .groups = "drop")
+
+edges <- edges %>%
+  left_join(LinkCompletion, by = join_by(player1, player2, !!facet_col))
+
 # ---- Final tidy on nodes ---------------------------------------------------
 nodes <- nodes %>%
   arrange(!!facet_col) %>%
@@ -2789,12 +2808,14 @@ nodes <- nodes %>%
         #setup the pitch
         pitch_base(line_col = "#95A5A6") +
         
-        #set scale and color gradient
+        # line colour scale (same 50-100% range as the non-facet maps)
         scale_colour_gradientn(
           colors = c("#FFFFF0", scale_color),
-        values = scales::rescale(c(0, 0.5)), 
-        breaks = scales::breaks_width(0.1), 
-        name = "Circle Colour = Threat (EPV)") +
+          limits = c(0.5, 1),
+          oob    = scales::squish,
+          breaks = c(.5, .6, .7, .8, .9, 1),
+          labels = scales::label_percent(accuracy = 1),
+          name   = "Line Colour = Players' Pass Completion") +
         
         scale_size_continuous(range = c(0.5, 3)) +
         
@@ -2814,7 +2835,8 @@ nodes <- nodes %>%
       
         #plot player connections
         plot_passnet <- plot_passnet +
-          geom_segment(data = edges, aes(x, y, xend = xend, yend = yend, linewidth = (Total_Passes*0.25)), colour = "black", alpha = 0.8, show.legend = FALSE) +
+          geom_segment(data = edges, aes(x, y, xend = xend, yend = yend, linewidth = (Total_Passes*0.25), colour = Pass_Suc)) +
+          guides(linewidth = "none") +
 
         #plot player positions
           new_scale_color() +
@@ -2826,13 +2848,6 @@ nodes <- nodes %>%
         
         # set scale and colors
 
-      scale_colour_gradientn(
-        colors = c("#FFFFF0", scale_color),
-        values = scales::rescale(c(0, 1)),
-        breaks = c(0, .25, .5, .75, 1),
-        labels = scales::label_percent(accuracy = 1),
-        name   = "Line Color = Passing Success") +  
-          
         scale_fill_gradientn(
         colors = c("#FFFFF0", scale_color),
         values = scales::rescale(c(0, 0.5)), 
@@ -3857,16 +3872,35 @@ shape_data <- ev %>%
   mutate(Game_Quarter = factor(Game_Quarter, levels = quarter_levels)) %>%
   filter(!is.na(Game_Quarter))
 
+# Block method, like the touch-area plots:
+#   "mad"      = median +/- 1.5 MAD (robust; about the middle 75% when the
+#                spread is roughly normal) and a convex hull of the defensive
+#                actions inside it, with the median as the block line
+#   "quantile" = 10th-90th percentile box with the mean as the block line
+block_method <- "mad"
+mad_k <- 1.5           # width of the MAD band (1 = tighter block)
+block_shape <- "box"   # "box" = rectangle from the bounds, "hull" = outline of the actions inside
+block_bounds <- function(v, lo_q = 0.1, hi_q = 0.9) {
+  if (block_method == "mad") {
+    m <- median(v); s <- median(abs(v - m)) / 0.6745
+    c(lo = max(0, m - mad_k * s), hi = min(100, m + mad_k * s), mid = m)
+  } else {
+    c(lo = unname(quantile(v, lo_q)), hi = unname(quantile(v, hi_q)), mid = mean(v))
+  }
+}
+
 def_shape <- shape_data %>%
   filter(da) %>%
   group_by(TeamName, Game_Quarter) %>%
   summarise(`Def. actions` = n(),
             `DA height (m)` = round(mean(x) * 1.05, 1),
-            `Block depth (m)` = round((quantile(x, 0.9) - quantile(x, 0.1)) * 1.05, 1),
-            `Block width (m)` = round((quantile(y, 0.9) - quantile(y, 0.1)) * 0.68, 1),
-            x10 = quantile(x, 0.1), x90 = quantile(x, 0.9),
-            y10 = quantile(y, 0.1), y90 = quantile(y, 0.9), xm = mean(x),
+            x10 = block_bounds(x)[["lo"]], x90 = block_bounds(x)[["hi"]],
+            y10 = block_bounds(y)[["lo"]], y90 = block_bounds(y)[["hi"]],
+            xm = block_bounds(x)[["mid"]],
             .groups = "drop") %>%
+  mutate(`Block depth (m)` = round((x90 - x10) * 1.05, 1),
+         `Block width (m)` = round((y90 - y10) * 0.68, 1),
+         `Block line (m)` = round(xm * 1.05, 1)) %>%
   left_join(shape_data %>% filter(on_ball) %>% group_by(TeamName, Game_Quarter) %>%
               summarise(`On-ball height (m)` = round(mean(x) * 1.05, 1), .groups = "drop"),
             by = c("TeamName", "Game_Quarter")) %>%
@@ -3881,6 +3915,17 @@ score_at <- function(m) paste0(sum(goal_events$Scoring_Team == Match_Home & goal
                                sum(goal_events$Scoring_Team == Match_Away & goal_events$expandedMinute < m))
 def_shape <- def_shape %>%
   mutate(`Score at start` = vapply(as.character(Game_Quarter), function(q) score_at(quarter_start[[q]]), character(1)))
+
+# convex hull of the defensive actions inside each block (used when block_method = "mad")
+block_hull <- shape_data %>%
+  filter(da) %>%
+  inner_join(def_shape %>% select(TeamName, Game_Quarter, x10, x90, y10, y90),
+             by = c("TeamName", "Game_Quarter")) %>%
+  filter(x >= x10, x <= x90, y >= y10, y <= y90) %>%
+  group_by(TeamName, Game_Quarter) %>%
+  filter(n() >= 3) %>%
+  slice(chull(x, y)) %>%
+  ungroup()
 
 # ---- proper PPDA: opponent passes in their own 60% / your defensive
 #      actions in that same zone (your attacking 60%) ----------------
@@ -3912,6 +3957,34 @@ ppda_proper <- bind_rows(lapply(names(ppda_periods), function(p) {
 }))
 HomePPDA_Proper <- ppda_proper[[paste0(Match_Home, " | PPDA")]][1]
 AwayPPDA_Proper <- ppda_proper[[paste0(Match_Away, " | PPDA")]][1]
+
+# ---- one PPDA definition across the dashboard ----------------------
+# "standard" = opponent passes in their own 60% / tackles, interceptions,
+#              challenges and fouls committed in that zone (used everywhere:
+#              value box, PPDA development plots, table, sub windows, report)
+# "simple"   = the pipeline's original all passes / all defensive actions
+ppda_definition <- "standard"
+HomePPDA_Simple <- HomePPDA
+AwayPPDA_Simple <- AwayPPDA
+if (ppda_definition == "standard") {
+  HomePPDA <- HomePPDA_Proper
+  AwayPPDA <- AwayPPDA_Proper
+  # cumulative standard PPDA through the match, in event order, replacing the
+  # pipeline's cumulative columns used by the PPDA development plots
+  tv_p  <- num0(plottingData, "type/value")
+  out_p <- num0(plottingData, "outcomeType/value")
+  x_p   <- numNA(plottingData, "x")
+  pass_own60 <- tv_p %in% c(1, 2) & coalesce(x_p <= 60, FALSE)
+  da_zone    <- (tv_p %in% c(7, 8, 45) | (tv_p == 4 & out_p == 0)) & coalesce(x_p >= 40, FALSE)
+  cum_ppda <- function(passes, das) round(ifelse(das > 0, passes / das, 0), 2)
+  plottingData$Home_PPDA_Cumalative <- cum_ppda(cumsum(pass_own60 & plottingData$TeamName == Match_Away),
+                                                cumsum(da_zone & plottingData$TeamName == Match_Home))
+  plottingData$Away_PPDA_Cumalative <- cum_ppda(cumsum(pass_own60 & plottingData$TeamName == Match_Home),
+                                                cumsum(da_zone & plottingData$TeamName == Match_Away))
+}
+# y-axis ceiling for the PPDA development plots (early-match values spike
+# while few defensive actions have been made)
+ppda_ylim <- max(12, ceiling(1.6 * max(c(HomePPDA, AwayPPDA), na.rm = TRUE)))
 
 # ---- substitution windows -----------------------------------------
 sub_times <- sort(unique(round(sub_events$expandedMinute)))
@@ -5403,33 +5476,89 @@ MD_MC_Plot
 ```
 ### Match Result {.tabset}
 ```{r}
+#| label: Match Result Probablity All Models
+#| title: Match Result Probablity - All Models
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-dpi: 200
+#| fig-width: 4
+#| fig-height: 3.6
+
+# ---------------------------------------------------------------
+# Doughnut charts of the simulated result probabilities. Segments are
+# in team colours (draw in grey); the black arc on the outside marks the
+# result that actually happened, and the centre shows its probability.
+# ---------------------------------------------------------------
+outcome_levels <- c(Match_Home, "Match Drawn", Match_Away)
+outcome_fill   <- setNames(c(Color_Home, "grey70", Color_Away), outcome_levels)
+outcome_text   <- setNames(c(Color_Home_Text, "black", Color_Away_Text), outcome_levels)
+actual_outcome <- if (HomeTotalGoals > AwayTotalGoals) Match_Home else if (HomeTotalGoals < AwayTotalGoals) Match_Away else "Match Drawn"
+actual_label   <- if (actual_outcome == "Match Drawn") "Draw" else paste(actual_outcome, "win")
+
+donut_data <- function(df, model) {
+  df %>%
+    mutate(Outcome = factor(Outcome, levels = outcome_levels), Model = model) %>%
+    arrange(Outcome) %>%
+    mutate(ymax = cumsum(Probability), ymin = ymax - Probability, mid = (ymin + ymax) / 2,
+           Actual = Outcome == actual_outcome,
+           text_col = unname(outcome_text[as.character(Outcome)]))
+}
+plot_outcome_donut <- function(d, title, ncol = 1) {
+  # text sizes tuned for the same 4 x 3.6 in panel as the score plots;
+  # the 2x2 version uses smaller text so it stays on the plot
+  multi    <- ncol > 1
+  pct_size <- if (multi) 1.7 else 2.6
+  ctr_size <- if (multi) 1.4 else 2.2
+  centre <- d %>% filter(Actual) %>%
+    mutate(label = paste0("Actual result\n", actual_label, "\n", format(round(Probability, 1), nsmall = 1), "%"))
+  ggplot(d) +
+    geom_rect(aes(xmin = 2.8, xmax = 4.2, ymin = ymin, ymax = ymax, fill = Outcome), colour = "snow", linewidth = 0.8) +
+    geom_rect(data = centre, aes(xmin = 4.3, xmax = 4.55, ymin = ymin, ymax = ymax), fill = "black") +
+    geom_text(aes(x = 3.5, y = mid, label = ifelse(Probability >= 4, paste0(round(Probability), "%"), ""),
+                  colour = text_col), size = pct_size, fontface = "bold") +
+    geom_text(data = centre, aes(x = 0, y = 0, label = label), size = ctr_size, lineheight = 0.9) +
+    scale_colour_identity() +
+    scale_fill_manual(values = outcome_fill, name = "Black arc = actual result", drop = FALSE) +
+    coord_polar(theta = "y", start = 0) +
+    scale_x_continuous(limits = c(0, 4.6)) +
+    facet_wrap(~ Model, ncol = ncol) +
+    labs(title = title, subtitle = Match_Fixture, caption = My_caption) +
+    theme_void() +
+    theme_ai(title_size = 10, subtitle_size = 8, legend_position = "bottom") +
+    theme(legend.text = element_text(size = 4),
+          legend.title = element_text(size = 4, face = "bold"),
+          legend.key.size = unit(0.3, "cm"),
+          legend.background = element_rect(fill = "snow", colour = NA),
+          legend.margin = margin(0, 0, 0, 0),
+          strip.text = element_text(face = "bold", size = 4),
+          panel.spacing = unit(0.1, "lines"),
+          #plot.margin = margin(4, 4, 4, 4)
+          )
+}
+
+all_models <- bind_rows(donut_data(outcome_prob, "xG only"),
+                        donut_data(outcome_prob_blend, "Blended"),
+                        donut_data(outcome_prob_max, "Optimistic"),
+                        donut_data(outcome_prob_min, "Pessimistic")) %>%
+  mutate(Model = factor(Model, levels = c("xG only", "Blended", "Optimistic", "Pessimistic")))
+plot_outcome_donut(all_models, "Match Outcome Probability (10000 sims)", ncol = 2)
+```
+
+```{r}
 #| label: Match Result Probablity Plot
 #| title: Match Result Probablity xG only
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-dpi: 200
 #| fig-width: 4
 #| fig-height: 3.6
-#| fig-dpi: 200
 
-MD_MC_Result_Plot <- ggplot(outcome_prob) +
-  geom_bar(aes(x = Outcome, y = Probability, fill = custom_colors), stat = "identity", colour = "black", width = 1)  +
-  scale_fill_identity(name = "",
-                      breaks = c(Color_Home,"gray", Color_Away),
-                      labels = c(Match_Home, "Match Drawn", Match_Away),
-                      guide = "legend") +
-  geom_text(aes(x = Outcome, y = Probability, label = paste(Probability, " %")), size = 2, vjust = -0.5,colour = "black") + 
-  labs(title = "Probabilities of Match Outcome (10000 Sims)",
-       subtitle = Match_Fixture,
-       x = "", 
-       y = "Probability %",
-       caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8, axis = TRUE)
-
+MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob, "xG only"),
+                                        "Match Outcome Probability (10000 sims)")
 MD_MC_Result_Plot
-
 ```
-
 
 ```{r}
 #| label: Match Result Probablity Blended Plot
@@ -5437,28 +5566,14 @@ MD_MC_Result_Plot
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-dpi: 200
 #| fig-width: 4
 #| fig-height: 3.6
-#| fig-dpi: 200
 
-MD_MC_Result_Plot <- ggplot(outcome_prob_blend) +
-  geom_bar(aes(x = Outcome, y = Probability, fill = custom_colors), stat = "identity", colour = "black", width = 1)  +
-  scale_fill_identity(name = "",
-                      breaks = c(Color_Home,"gray", Color_Away),
-                      labels = c(Match_Home, "Match Drawn", Match_Away),
-                      guide = "legend") +
-  geom_text(aes(x = Outcome, y = Probability, label = paste(Probability, " %")), size = 2, vjust = -0.5,colour = "black") + 
-#  scale_fill_manual(values = custom_colors) +
-  labs(title = "Probabilities of Match Outcome (10000 Sims)",
-       subtitle = Match_Fixture,
-       x = "", 
-       y = "Probability %",
-       caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8, axis = TRUE)
+MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob_blend, "Blended"),
+                                        "Match Outcome Probability (10000 sims)")
 MD_MC_Result_Plot
-
 ```
-
 
 ```{r}
 #| label: Match Result Probablity Max Plot
@@ -5466,27 +5581,13 @@ MD_MC_Result_Plot
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-dpi: 200
 #| fig-width: 4
 #| fig-height: 3.6
-#| fig-dpi: 200
 
-MD_MC_Result_Plot <- ggplot(outcome_prob_max) +
-  geom_bar(aes(x = Outcome, y = Probability, fill = custom_colors), stat = "identity", colour = "black", width = 1)  +
-  scale_fill_identity(name = "",
-                      breaks = c(Color_Home,"gray", Color_Away),
-                      labels = c(Match_Home, "Match Drawn", Match_Away),
-                      guide = "legend") +
-  geom_text(aes(x = Outcome, y = Probability, label = paste(Probability, " %")), size = 2, vjust = -0.5,colour = "black") + 
-#  scale_fill_manual(values = custom_colors) +
-  labs(title = "Probabilities of Match Outcome (10000 Sims)",
-       subtitle = Match_Fixture,
-       x = "", 
-       y = "Probability %",
-       caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8, axis = TRUE)
-
+MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob_max, "Optimistic"),
+                                        "Match Outcome Probability (10000 sims)")
 MD_MC_Result_Plot
-
 ```
 
 ```{r}
@@ -5495,27 +5596,13 @@ MD_MC_Result_Plot
 #| echo: false
 #| message: false
 #| warning: false
+#| fig-dpi: 200
 #| fig-width: 4
 #| fig-height: 3.6
-#| fig-dpi: 200
 
-MD_MC_Result_Plot <- ggplot(outcome_prob_min) +
-  geom_bar(aes(x = Outcome, y = Probability, fill = custom_colors), stat = "identity", colour = "black", width = 1)  +
-  scale_fill_identity(name = "",
-                      breaks = c(Color_Home,"gray", Color_Away),
-                      labels = c(Match_Home, "Match Drawn", Match_Away),
-                      guide = "legend") +
-  geom_text(aes(x = Outcome, y = Probability, label = paste(Probability, " %")), size = 2, vjust = -0.5,colour = "black") + 
-#  scale_fill_manual(values = custom_colors) +
-  labs(title = "Probabilities of Match Outcome (10000 Sims)",
-       subtitle = Match_Fixture,
-       x = "", 
-       y = "Probability %",
-       caption = My_caption) +
-  theme_ai(title_size = 10, subtitle_size = 8, axis = TRUE)
-
+MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob_min, "Pessimistic"),
+                                        "Match Outcome Probability (10000 sims)")
 MD_MC_Result_Plot
-
 ```
 
 ## Match Territory {.flow}
@@ -6052,505 +6139,330 @@ PassConnectiondata <- PassConnections %>%
          'Pass Time' = Pass_time)
 
 ```
-## Pass Maps Halfs {.flow}
+## Pass Maps {.flow}
 ### Home
 ```{r}
-#| title: Home 1st Half passnetwork
-#| label: Home 1st Half passnetwork
+#| label: Home full pass networks build
 #| include: false
 #| echo: false
 #| message: false
 #| warning: false
 
-#| fig-dpi: 200
-
-
-
+# all versions are built here and shown through the selector below
 HomepassPlot1stWD <- plot_passnet_AI(data = plottingData,
                                   team_name = Match_Home, scale_stat = "EPV", 
                                   scale_color = Color_Home, text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " 1st Half"),
                                   plot_start = 00, plot_finish = 44, pressmap = "Yes", logo = "", passes = 5)
-HomepassPlot1stWD
-
-```
-
-```{r}
-#| title: Home 2nd Half passnetwork
-#| label: Home 2nd Half passnetwork
-#| include: false
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-
 
 HomepassPlot2ndWD <- plot_passnet_AI(data = plottingData,  
                                   team_name = Match_Home, scale_stat = "EPV", 
                                   scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " 2nd Half"),
                                   plot_start = 47, plot_finish = 100, pressmap = "Yes", logo = "", passes = 5)
-HomepassPlot2ndWD
-
-```
-``` {r}
-#| title: Passnetwork first Goal 
-#| label: Home passnetwork First Goal
-#| include: false
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlot20m <- plot_passnet_AI(data = plottingData, 
                                         team_name = Match_Home, scale_stat = "EPV", 
                                         scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " Up to First Goal"),
                                         plot_start = 00, plot_finish = First_Goal, pitch = "", wrap = "", pressmap = "Yes", logo = "", passes = 2)
-HomepassPlot20m
-```
-
-```{r}
-#| title: Home Pass Networks
-#| label: Home passnetwork period selector
-period_selector(list("1st Half" = HomepassPlot1stWD,
-                     "2nd Half" = HomepassPlot2ndWD,
-                     "To 1st Goal" = HomepassPlot20m),
-                id = "ps-home-passnet-halves", color = Color_Home, text_color = Color_Home_Text)
-```
-### Away
-```{r}
-#| title: Away 1st Half passnetwork
-#| label: Away 1st Half passnetwork
-#| include: false
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-
-AwaypassPlot1stWD <- plot_passnet_AI(data = plottingData,  
-                                   team_name = Match_Away, scale_stat = "EPV", 
-                                   scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " 1st Half"),
-                                   plot_start = 00, plot_finish = 44, pressmap = "Yes", logo = "", passes = 5)
-AwaypassPlot1stWD
-
-```
-
-```{r}
-#| title: Away 2nd Half passnetwork
-#| label: Away 2nd Half passnetwork
-#| include: false
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-
-AwaypassPlot2ndWD <- plot_passnet_AI(data = plottingData,  
-                                   team_name = Match_Away, scale_stat = "EPV", 
-                                   scale_color = Color_Away, text_color = Color_Away_Text,  subtitle = paste0(Match_Fixture, " 2nd Half"),
-                                   plot_start = 46, plot_finish = 100, pressmap = "Yes", logo = "", passes = 5)
-AwaypassPlot2ndWD
-
-
-```
-``` {r}
-#| title: Passnetwork First Goal 
-#| label: Away passnetwork first Goal
-#| include: false
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-AwaypassPlot20m <- plot_passnet_AI(data = plottingData,  
-                                   team_name = Match_Away, scale_stat = "EPV", 
-                                   scale_color = Color_Away, text_color = Color_Away_Text,  subtitle = paste0(Match_Fixture, " Up to First Goal"),
-                                   plot_start = 00, plot_finish = First_Goal, pressmap = "Yes", logo = "", passes = 2)
-AwaypassPlot20m
-```
-
-```{r}
-#| title: Away Pass Networks
-#| label: Away passnetwork period selector
-period_selector(list("1st Half" = AwaypassPlot1stWD,
-                     "2nd Half" = AwaypassPlot2ndWD,
-                     "To 1st Goal" = AwaypassPlot20m),
-                id = "ps-away-passnet-halves", color = Color_Away, text_color = Color_Away_Text)
-```
-
-## Pass Maps Subs {.flow}
-### Home {.tabset}
-```{r}
-#| title: Home Passnetwork to 1st Sub 
-#| label: Home 1st subs passnetwork
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlot1stsubsWD <- plot_passnet_AI(data = plottingData, 
                                    team_name = Match_Home, scale_stat = "EPV", 
                                    scale_color = Color_Home, text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " to 1st Subs"),
                                    plot_start = 00, plot_finish = firstSubHome, pitch = "", wrap = "", pressmap = "Yes", logo = "", passes = 5)
-HomepassPlot1stsubsWD
-
-```
-
-``` {r}
-#| title: Home Passnetwork Post 1st Sub 
-#| label: Home post 1st subs passnetwork
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlotPost1stsubsWD <- plot_passnet_AI(data = plottingData, 
                                         team_name = Match_Home, scale_stat = "EPV", 
                                         scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " Post 1st Subs"),
                                         plot_start = firstSubHome, plot_finish = 100, pitch = "", wrap = "", pressmap = "Yes", logo = "", passes = 5)
-HomepassPlotPost1stsubsWD
 ```
 
-### Away {.tabset}
+::: {.card title="Home Pass Maps"}
 ```{r}
-#| title: Away Passnetwork to 1st Sub 
-#| label: Away 1st subs passnetwork
+#| label: Home full pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("1st Half" = HomepassPlot1stWD,
+                     "2nd Half" = HomepassPlot2ndWD,
+                     "To 1st Goal" = HomepassPlot20m,
+                     "To 1st Sub" = HomepassPlot1stsubsWD,
+                     "Post 1st Sub" = HomepassPlotPost1stsubsWD),
+                id = "ps-home-full", color = Color_Home, text_color = Color_Home_Text, width = 7, height = 5)
+```
+:::
+
+### Away
+```{r}
+#| label: Away full pass networks build
+#| include: false
 #| echo: false
 #| message: false
 #| warning: false
 
-#| fig-dpi: 200
+# all versions are built here and shown through the selector below
+AwaypassPlot1stWD <- plot_passnet_AI(data = plottingData,  
+                                   team_name = Match_Away, scale_stat = "EPV", 
+                                   scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " 1st Half"),
+                                   plot_start = 00, plot_finish = 44, pressmap = "Yes", logo = "", passes = 5)
+
+AwaypassPlot2ndWD <- plot_passnet_AI(data = plottingData,  
+                                   team_name = Match_Away, scale_stat = "EPV", 
+                                   scale_color = Color_Away, text_color = Color_Away_Text,  subtitle = paste0(Match_Fixture, " 2nd Half"),
+                                   plot_start = 46, plot_finish = 100, pressmap = "Yes", logo = "", passes = 5)
+
+AwaypassPlot20m <- plot_passnet_AI(data = plottingData,  
+                                   team_name = Match_Away, scale_stat = "EPV", 
+                                   scale_color = Color_Away, text_color = Color_Away_Text,  subtitle = paste0(Match_Fixture, " Up to First Goal"),
+                                   plot_start = 00, plot_finish = First_Goal, pressmap = "Yes", logo = "", passes = 2)
 
 AwaypassPlot1stsubsWD <- plot_passnet_AI(data = plottingData, 
                                    team_name = Match_Away, scale_stat = "EPV", 
                                    scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " to 1st Subs"),
                                    plot_start = 00, plot_finish = firstSubAway, pitch = "", wrap = "", pressmap = "Yes", logo = "", passes = 5)
-AwaypassPlot1stsubsWD
-
-```
-
-``` {r}
-#| title: Away Passnetwork post 1st Sub 
-#| label: Away post 1st subs passnetwork
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 AwaypassPlotpost1stsubsWD <- plot_passnet_AI(data = plottingData, 
                                         team_name = Match_Away, scale_stat = "EPV", 
                                         scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " Post 1st Subs"),
                                         plot_start = firstSubAway, plot_finish = 100, pitch = "", wrap = "", pressmap = "Yes", logo = "", passes = 5)
-AwaypassPlotpost1stsubsWD
 ```
-## Attacking Pass Maps Halfs {.flow}
-### Home {.tabset}
+
+::: {.card title="Away Pass Maps"}
 ```{r}
-#| title: Home Attacking Passnetwork 1st Half
-#| label: Home Attacking Passnetwork 1st Half
+#| label: Away full pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("1st Half" = AwaypassPlot1stWD,
+                     "2nd Half" = AwaypassPlot2ndWD,
+                     "To 1st Goal" = AwaypassPlot20m,
+                     "To 1st Sub" = AwaypassPlot1stsubsWD,
+                     "Post 1st Sub" = AwaypassPlotpost1stsubsWD),
+                id = "ps-away-full", color = Color_Away, text_color = Color_Away_Text, width = 7, height = 5)
+```
+:::
+
+## Pass Maps by Time {.flow}
+### Home
+```{r}
+#| label: Home time pass networks build
+#| include: false
 #| echo: false
 #| message: false
 #| warning: false
 
-#| fig-dpi: 200
+# all versions are built here and shown through the selector below
+HomepassPlotPeriod <- plot_passnet_AI(data = plottingData,  
+                                      team_name = Match_Home, scale_stat = "EPV", 
+                                      scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
+                                      plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes", Facet_by = "Game_Period", passes = 2)
 
+HomepassPlotQuarter <- plot_passnet_AI(data = plottingData,  
+                                      team_name = Match_Home, scale_stat = "EPV", 
+                                      scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
+                                      plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes", Facet_by = "Game_Quarter", passes = 2)
+```
+
+::: {.card title="Home Pass Maps by Time"}
+```{r}
+#| label: Home time pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("By Game Period" = HomepassPlotPeriod,
+                     "By Game Quarter" = HomepassPlotQuarter),
+                id = "ps-home-time", color = Color_Home, text_color = Color_Home_Text, width = 10, height = 7)
+```
+:::
+
+### Away
+```{r}
+#| label: Away time pass networks build
+#| include: false
+#| echo: false
+#| message: false
+#| warning: false
+
+# all versions are built here and shown through the selector below
+AwaypassPlotPeriod <- plot_passnet_AI(data = plottingData,  
+                                     team_name = Match_Away, scale_stat = "EPV", 
+                                     scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
+                                     plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes",  Facet_by = "Game_Period", passes = 2)
+
+AwaypassPlotQuarter <- plot_passnet_AI(data = plottingData,  
+                                     team_name = Match_Away, scale_stat = "EPV", 
+                                     scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
+                                     plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes",  Facet_by = "Game_Quarter", passes = 2)
+```
+
+::: {.card title="Away Pass Maps by Time"}
+```{r}
+#| label: Away time pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("By Game Period" = AwaypassPlotPeriod,
+                     "By Game Quarter" = AwaypassPlotQuarter),
+                id = "ps-away-time", color = Color_Away, text_color = Color_Away_Text, width = 10, height = 7)
+```
+:::
+
+## Attacking Pass Maps {.flow}
+### Home
+```{r}
+#| label: Home att pass networks build
+#| include: false
+#| echo: false
+#| message: false
+#| warning: false
+
+# all versions are built here and shown through the selector below
 HomepassPlot1stAtt <- plot_passnet_AI(data = plottingData, 
                                   team_name = Match_Home, scale_stat = "EPV", 
                                   scale_color = Color_Home, text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " 1st Half"),
                                   plot_start = 00, plot_finish = 44, pitch = "Half", pressmap = "Yes", passes = 5)
-HomepassPlot1stAtt
-
-
-```
-
-```{r}
-#| title: Home Attacking Passnetwork 2nd Half
-#| label: Home Attacking Passnetwork 2nd Half
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlot2ndAtt <- plot_passnet_AI(data = plottingData,
                                   team_name = Match_Home, scale_stat = "EPV", 
                                   scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " 2nd Half"),
                                   plot_start = 46, plot_finish = 100, pitch = "Half", pressmap = "Yes", passes = 5)
-HomepassPlot2ndAtt
-
-```
-
-```{r}
-#| title: Home Attacking Passnetwork 1st Goal
-#| label: Home Attacking Passnetwork 1st Goal
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlot20mA <- plot_passnet_AI(data = plottingData,
                                   team_name = Match_Home, scale_stat = "EPV", 
                                   scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " up to First Goal"),
                                   plot_start = 00, plot_finish = First_Goal, pitch = "Half", pressmap = "Yes", passes = 2)
-HomepassPlot20mA
-
-```
-
-### Away {.tabset}
-```{r}
-#| title: Away Attacking Passnetwork 1st Half
-#| label: Away Attacking Passnetwork 1st Half
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-AwaypassPlot1stAtt <- plot_passnet_AI(data = plottingData, 
-                                     team_name = Match_Away, scale_stat = "EPV", 
-                                     scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " 1st Half"),
-                                     plot_start = 00, plot_finish = 44, pitch = "Half", pressmap = "Yes", passes = 5)
-AwaypassPlot1stAtt
-
-```
-
-```{r}
-#| title: Away Attacking Passnetwork 2nd Half
-#| label: Away Attacking Passnetwork 2nd Half
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-AwaypassPlot2ndAtt <- plot_passnet_AI(data = plottingData,
-                                     team_name = Match_Away, scale_stat = "EPV", 
-                                     scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " 2nd Half"),
-                                     plot_start = 46, plot_finish = 100, pitch = "Half", pressmap = "Yes", passes = 5)
-AwaypassPlot2ndAtt
-
-```
-```{r}
-#| title: Away Attacking Passnetwork 1st Goal
-#| label: Away Attacking Passnetwork 1st Goal
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-AwaypassPlot2ndAtt20m <- plot_passnet_AI(data = plottingData,
-                                     team_name = Match_Away, scale_stat = "EPV", 
-                                     scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " up to First Goal"),
-                                     plot_start = 00, plot_finish = First_Goal, pitch = "Half", pressmap = "Yes", passes = 2)
-AwaypassPlot2ndAtt20m
-
-```
-## Attacking Pass Maps Subs {.flow}
-### Home {.tabset}
-```{r}
-#| title: Home Attacking Passnetwork 1st Sub
-#| label: Home Attacking Passnetwork 1st Sub
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlot1subAtt <- plot_passnet_AI(data = plottingData,  
                                     team_name = Match_Home, scale_stat = "EPV", 
                                     scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " up to 1st Sub"),
                                     plot_start = 00, plot_finish = firstSubHome, pitch = "Half", pressmap = "Yes", passes = 5)
-HomepassPlot1subAtt
-
-```
-
-```{r}
-#| title: Home Attacking Passnetwork Post 1st Sub
-#| label: Home Attacking Passnetwork Post 1st Sub
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 HomepassPlot1subAttpost <- plot_passnet_AI(data = plottingData,  
                                     team_name = Match_Home, scale_stat = "EPV", 
                                     scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " Post 1st Subs"),
                                     plot_start = firstSubHome, plot_finish = 100, pitch = "Half", pressmap = "Yes", passes = 5)
-HomepassPlot1subAttpost
-
 ```
-### Away {.tabset}
+
+::: {.card title="Home Attacking Pass Maps"}
 ```{r}
-#| title: Away Attacking Passnetwork 1st Sub
-#| label: Away Attacking Passnetwork 1st Sub
+#| label: Home att pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("1st Half" = HomepassPlot1stAtt,
+                     "2nd Half" = HomepassPlot2ndAtt,
+                     "To 1st Goal" = HomepassPlot20mA,
+                     "To 1st Sub" = HomepassPlot1subAtt,
+                     "Post 1st Sub" = HomepassPlot1subAttpost),
+                id = "ps-home-att", color = Color_Home, text_color = Color_Home_Text, width = 7, height = 5)
+```
+:::
+
+### Away
+```{r}
+#| label: Away att pass networks build
+#| include: false
 #| echo: false
 #| message: false
 #| warning: false
 
-#| fig-dpi: 200
+# all versions are built here and shown through the selector below
+AwaypassPlot1stAtt <- plot_passnet_AI(data = plottingData, 
+                                     team_name = Match_Away, scale_stat = "EPV", 
+                                     scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " 1st Half"),
+                                     plot_start = 00, plot_finish = 44, pitch = "Half", pressmap = "Yes", passes = 5)
+
+AwaypassPlot2ndAtt <- plot_passnet_AI(data = plottingData,
+                                     team_name = Match_Away, scale_stat = "EPV", 
+                                     scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " 2nd Half"),
+                                     plot_start = 46, plot_finish = 100, pitch = "Half", pressmap = "Yes", passes = 5)
+
+AwaypassPlot2ndAtt20m <- plot_passnet_AI(data = plottingData,
+                                     team_name = Match_Away, scale_stat = "EPV", 
+                                     scale_color = Color_Away, text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " up to First Goal"),
+                                     plot_start = 00, plot_finish = First_Goal, pitch = "Half", pressmap = "Yes", passes = 2)
 
 AwaypassPlot1SubAtt <- plot_passnet_AI(data = plottingData,
                                       team_name = Match_Away, scale_stat = "EPV", 
                                       scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " up to 1st Sub"),
                                       plot_start = 00, plot_finish = firstSubAway, pitch = "Half", pressmap = "Yes", passes = 5)
-AwaypassPlot1SubAtt
-
-```
-
-```{r}
-#| title: Away Attacking Passnetwork Post 1st Sub
-#| label: Away Attacking Passnetwork Post 1st Sub
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
 
 AwaypassPlot1SubAttpost <- plot_passnet_AI(data = plottingData,
                                       team_name = Match_Away, scale_stat = "EPV", 
                                       scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " Post 1st Subs"),
                                       plot_start = firstSubAway, plot_finish = 100, pitch = "Half", pressmap = "Yes", passes = 5)
-AwaypassPlot1SubAttpost
-
 ```
 
-## Attacking Pass Maps Periods {.flow}
-### Home {.tabset}
+::: {.card title="Away Attacking Pass Maps"}
 ```{r}
-#| title: Home Passnetwork - By Game Period
-#| label: Home Passnetwork - By Game Period
+#| label: Away att pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("1st Half" = AwaypassPlot1stAtt,
+                     "2nd Half" = AwaypassPlot2ndAtt,
+                     "To 1st Goal" = AwaypassPlot2ndAtt20m,
+                     "To 1st Sub" = AwaypassPlot1SubAtt,
+                     "Post 1st Sub" = AwaypassPlot1SubAttpost),
+                id = "ps-away-att", color = Color_Away, text_color = Color_Away_Text, width = 7, height = 5)
+```
+:::
+
+## Attacking Pass Maps by Time {.flow}
+### Home
+```{r}
+#| label: Home att time pass networks build
+#| include: false
 #| echo: false
 #| message: false
 #| warning: false
 
-#| fig-dpi: 200
-
-HomepassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
-                                      team_name = Match_Home, scale_stat = "EPV", 
-                                      scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
-                                      plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes", Facet_by = "Game_Period", passes = 2)
-HomepassPlotFTAttW
-```
-```{r}
-#| title: Home Passnetwork - By Game Quarter
-#| label: Home Passnetwork - By Game Quarter
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-HomepassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
-                                      team_name = Match_Home, scale_stat = "EPV", 
-                                      scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
-                                      plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes", Facet_by = "Game_Quarter", passes = 2)
-HomepassPlotFTAttW
-```
-
-```{r}
-#| title: Home Attacking Passnetwork - By Game Period
-#| label: Home Attacking Passnetwork - By Game Period
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-HomepassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
+# all versions are built here and shown through the selector below
+HomepassPlotAttPeriod <- plot_passnet_AI(data = plottingData,  
                                       team_name = Match_Home, scale_stat = "EPV", 
                                       scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
                                       plot_start = 00, plot_finish = 100, pitch = "Half", pressmap = "Yes", wrap = "Yes", Facet_by = "Game_Period", passes = 2)
-HomepassPlotFTAttW
-```
-```{r}
-#| title: Home Attacking Passnetwork - By Game Quarter
-#| label: Home Attacking Passnetwork - By Game Quarter
-#| echo: false
-#| message: false
-#| warning: false
 
-#| fig-dpi: 200
-
-HomepassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
+HomepassPlotAttQuarter <- plot_passnet_AI(data = plottingData,  
                                       team_name = Match_Home, scale_stat = "EPV", 
                                       scale_color = Color_Home,  text_color = Color_Home_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
                                       plot_start = 00, plot_finish = 100, pitch = "Half", pressmap = "Yes", wrap = "Yes", Facet_by = "Game_Quarter", passes = 2)
-HomepassPlotFTAttW
 ```
 
-### Away {.tabset}
+::: {.card title="Home Attacking Pass Maps by Time"}
 ```{r}
-#| title: Away Passnetwork - By Game Period
-#| label: Away Passnetwork - By Game Period
+#| label: Home att time pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("By Game Period" = HomepassPlotAttPeriod,
+                     "By Game Quarter" = HomepassPlotAttQuarter),
+                id = "ps-home-att-time", color = Color_Home, text_color = Color_Home_Text, width = 10, height = 7)
+```
+:::
+
+### Away
+```{r}
+#| label: Away att time pass networks build
+#| include: false
 #| echo: false
 #| message: false
 #| warning: false
 
-#| fig-dpi: 200
-
-AwaypassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
-                                     team_name = Match_Away, scale_stat = "EPV", 
-                                     scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
-                                     plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes",  Facet_by = "Game_Period", passes = 2)
-AwaypassPlotFTAttW
-```
-```{r}
-#| title: Away Passnetwork - By Game Quarter
-#| label: Away Passnetwork - By Game Quarter
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-AwaypassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
-                                     team_name = Match_Away, scale_stat = "EPV", 
-                                     scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
-                                     plot_start = 00, plot_finish = 100, pitch = "", pressmap = "Yes", wrap = "Yes",  Facet_by = "Game_Quarter", passes = 2)
-AwaypassPlotFTAttW
-```
-```{r}
-#| title: Away Attacking Passnetwork - By Game Period
-#| label: Away Attacking Passnetwork - By Game Period
-#| echo: false
-#| message: false
-#| warning: false
-
-#| fig-dpi: 200
-
-AwaypassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
+# all versions are built here and shown through the selector below
+AwaypassPlotAttPeriod <- plot_passnet_AI(data = plottingData,  
                                      team_name = Match_Away, scale_stat = "EPV", 
                                      scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
                                      plot_start = 00, plot_finish = 100, pitch = "Half", pressmap = "Yes", wrap = "Yes",  Facet_by = "Game_Period", passes = 2)
-AwaypassPlotFTAttW
-```
-```{r}
-#| title: Away Attacking Passnetwork - By Game Quarter
-#| label: Away Attacking Passnetwork - By Game Quarter
-#| echo: false
-#| message: false
-#| warning: false
 
-#| fig-dpi: 200
-
-
-AwaypassPlotFTAttW <- plot_passnet_AI(data = plottingData,  
+AwaypassPlotAttQuarter <- plot_passnet_AI(data = plottingData,  
                                      team_name = Match_Away, scale_stat = "EPV", 
                                      scale_color = Color_Away,  text_color = Color_Away_Text, subtitle = paste0(Match_Fixture, " By Time Period"),
                                      plot_start = 00, plot_finish = 100, pitch = "Half", pressmap = "Yes", wrap = "Yes",  Facet_by = "Game_Quarter", passes = 2)
-AwaypassPlotFTAttW
 ```
+
+::: {.card title="Away Attacking Pass Maps by Time"}
+```{r}
+#| label: Away att time pass networks selector
+#| warning: false
+#| message: false
+period_selector(list("By Game Period" = AwaypassPlotAttPeriod,
+                     "By Game Quarter" = AwaypassPlotAttQuarter),
+                id = "ps-away-att-time", color = Color_Away, text_color = Color_Away_Text, width = 10, height = 7)
+```
+:::
+
 ## Pass Connections Home {.tabset}
 ```{r}
 #| title: Pass Connections by Passer
@@ -15056,9 +14968,10 @@ HomePPDATimePlot <- HomePPDAPlotData %>%
   
   #formatting
   scale_x_continuous(breaks = seq(0, 135, 15)) +
-  scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, 1)) +
+  scale_y_continuous(breaks = scales::breaks_pretty(8)) +
+  coord_cartesian(ylim = c(0, ppda_ylim)) +
   labs(title = paste(Match_Home, " PPDA Development"),
-       subtitle = paste0(Match_Fixture),
+       subtitle = paste0(Match_Fixture, " | full-time PPDA ", HomePPDA),
        x = "Match time (Mins)",
        caption = My_caption,
        y = "PPDA") +
@@ -15099,9 +15012,10 @@ AwayPPDATimePlot <- AwayPPDAPlotData %>%
   
   #formatting
   scale_x_continuous(breaks = seq(0, 135, 15)) +
-  scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, 1)) +
+  scale_y_continuous(breaks = scales::breaks_pretty(8)) +
+  coord_cartesian(ylim = c(0, ppda_ylim)) +
   labs(title = paste(Match_Away, " PPDA Development"),
-       subtitle = paste0(Match_Fixture),
+       subtitle = paste0(Match_Fixture, " | full-time PPDA ", AwayPPDA),
        x = "Match time (Mins)",
        caption = My_caption,
        y = "PPDA") +
@@ -15126,8 +15040,8 @@ AwayPPDATimePlot
 #| label: proper ppda table
 
 ai_gt(ppda_proper, "PPDA - Opposition Passes in Their Own 60% per Defensive Action",
-      subtitle = paste0(Match_Fixture, " | dashboard PPDA (all passes / all defensive actions): ",
-                        Match_Home, " ", HomePPDA, ", ", Match_Away, " ", AwayPPDA),
+      subtitle = paste0(Match_Fixture, " | for comparison, simple PPDA (all passes / all defensive actions): ",
+                        Match_Home, " ", HomePPDA_Simple, ", ", Match_Away, " ", AwayPPDA_Simple),
       rowname = "Period") %>%
   gt_team_spanners() %>%
   fmt_number(columns = ends_with("PPDA"), decimals = 2) %>%
@@ -17362,12 +17276,15 @@ ggplot(shape_long, aes(x = Game_Quarter, y = Height, colour = TeamName, group = 
 def_shape %>%
   mutate(Game_Quarter = as.character(Game_Quarter)) %>%
   select(TeamName, Quarter = Game_Quarter, `Score at start`, `Def. actions`, `DA height (m)`,
-         `Block depth (m)`, `Block width (m)`, `On-ball height (m)`, `Field tilt %`) %>%
+         `Block line (m)`, `Block depth (m)`, `Block width (m)`, `On-ball height (m)`, `Field tilt %`) %>%
   arrange(factor(TeamName, levels = c(Match_Home, Match_Away)), factor(Quarter, levels = quarter_levels)) %>%
   ai_gt("Defensive Shape by Quarter", group = "TeamName", rowname = "Quarter") %>%
   fmt_percent(columns = "Field tilt %", decimals = 0, scale_values = FALSE) %>%
   gt_team_groups(c(Match_Home, Match_Away)) %>%
-  tab_footnote("Block depth / width = distance between the 10th and 90th percentile of defensive-action positions (length / width of the pitch). Higher DA height = defending further up the pitch.")
+  tab_footnote(paste0("Block line / depth / width use ", if (block_method == "mad")
+    paste0("the median +/- ", mad_k, " MAD of defensive-action positions (block line = median)")
+    else "the 10th-90th percentile of defensive-action positions (block line = mean)",
+    ". DA height = mean position. Higher = defending further up the pitch."))
 ```
 
 ## Defensive Block {.flow}
@@ -17382,17 +17299,26 @@ def_shape %>%
 plot_block <- function(team) {
   pts <- shape_data %>% filter(TeamName == .env$team, da, Game_Quarter != "Injury Time")
   box <- def_shape %>% filter(TeamName == .env$team, Game_Quarter != "Injury Time")
+  hull <- block_hull %>% filter(TeamName == .env$team, Game_Quarter != "Injury Time")
+  block_layer <- if (block_method == "mad" && block_shape == "hull") {
+    geom_polygon(data = hull, aes(x = x, y = y), fill = team_col(team), alpha = 0.18,
+                 colour = team_col(team), linewidth = 0.4, inherit.aes = FALSE)
+  } else {
+    geom_rect(data = box, aes(xmin = x10, xmax = x90, ymin = y10, ymax = y90),
+              fill = team_col(team), alpha = 0.18, colour = team_col(team), linewidth = 0.4, inherit.aes = FALSE)
+  }
   ggplot(pts) +
     pitch_base() +
-    geom_rect(data = box, aes(xmin = x10, xmax = x90, ymin = y10, ymax = y90),
-              fill = team_col(team), alpha = 0.18, colour = team_col(team), linewidth = 0.4, inherit.aes = FALSE) +
+    block_layer +
     geom_point(aes(x = x, y = y), colour = team_col(team), size = 0.8, alpha = 0.7) +
     geom_vline(data = box, aes(xintercept = xm), colour = "black", linetype = "dashed", linewidth = 0.4) +
     geom_label(data = box, aes(x = 50, y = 104, label = paste0(`DA height (m)`, "m high | score ", `Score at start`)),
                size = 2, label.size = 0, fill = "snow", inherit.aes = FALSE) +
     facet_wrap(~ Game_Quarter, nrow = 2) +
     pitch_title(paste0(team, " Defensive Block by Quarter"),
-                paste0(Match_Fixture, " | shaded box = middle 80% of defensive actions, dashed line = average height")) +
+                paste0(Match_Fixture, if (block_method == "mad")
+                  paste0(" | shaded ", ifelse(block_shape == "hull", "area", "box"), " = defensive actions within ", mad_k, " MAD of the median, dashed line = median height")
+                  else " | shaded box = middle 80% of defensive actions, dashed line = average height")) +
     team_strip(team)
 }
 plot_block(Match_Home)
@@ -20087,7 +20013,7 @@ plot_gk_actions(Match_Away)
 :::
 
 ::: {.card .method-card title="PPDA and PPDO"}
-**PPDA (passes per defensive action):** opponent passes divided by the team's defensive actions. Lower = more intense pressing.
+**PPDA (passes per defensive action):** opponent passes in their own 60% of the pitch divided by the team's tackles, interceptions, challenges and fouls committed in that same zone. Lower = more intense pressing. This one definition is used for the overview value box, the PPDA development plots, the PPDA table, the substitution windows and the match report (`ppda_definition <- "standard"`; set it to `"simple"` for the older all-passes / all-defensive-actions version, which is also shown in the PPDA table subtitle).
 
 **PPDO:** [ADD DEFINITION]
 :::
@@ -20163,7 +20089,7 @@ Own goals are not shots, so they are not simulated - the actual score can sit ou
 ::: {.card .method-card title="Transitions, defensive shape and PPDA"}
 **Open-play regain:** a sequence started by winning the ball in play rather than from a restart or the keeper. **Regain to shot** = seconds from the regain to the shot; the fast-transition window is 15 seconds. Conceded = the opponent's shots after your team lost the ball.
 
-**DA height:** average position of defensive actions in metres from the team's own goal (105m pitch). **Block depth / width:** distance between the 10th and 90th percentile of defensive-action positions. **On-ball height:** average position of the team's on-ball events.
+**DA height:** average position of defensive actions in metres from the team's own goal (105m pitch). **Block depth / width:** by default (`block_method <- "mad"`) the span of the median +/- 1.5 MAD (`mad_k`) of defensive-action positions along and across the pitch, drawn as a box (`block_shape <- "hull"` draws the outline of the actions inside instead); the block line is the median. Set `block_method <- "quantile"` for the 10th-90th percentile box with the mean as the line. **On-ball height:** average position of the team's on-ball events.
 
 **PPDA (standard):** opponent passes in their own 60% of the pitch divided by your tackles, interceptions, challenges and fouls in that same zone (your attacking 60%). Lower = more intense pressing. The older dashboard PPDA (all passes / all defensive actions) is shown in the table subtitle for comparison.
 
