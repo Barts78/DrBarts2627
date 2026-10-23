@@ -5482,7 +5482,7 @@ MD_MC_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 9
+#| fig-width: 4
 #| fig-height: 3.6
 #| dev.args: !expr list(bg = "snow")
 
@@ -5509,8 +5509,8 @@ plot_outcome_donut <- function(d, title, ncol = 1) {
   # text sizes tuned for the same 4 x 3.6 in panel as the score plots;
   # the 2x2 version uses smaller text so it stays on the plot
   multi    <- ncol > 1
-  pct_size <- if (multi) 2.4 else 2.6
-  ctr_size <- if (multi) 2 else 2.2
+  pct_size <- if (multi) 1.25 else 2.6
+  ctr_size <- if (multi) 1.5 else 2.2
   centre <- d %>% filter(Actual) %>%
     mutate(label = paste0("Actual result\n", actual_label, "\n", format(round(Probability, 1), nsmall = 1), "%"))
   ggplot(d) +
@@ -5562,7 +5562,7 @@ plot_outcome_donut(all_models, "Match Outcome Probability (10000 sims)", ncol = 
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 6.5
+#| fig-width: 4
 #| fig-height: 3.6
 #| dev.args: !expr list(bg = "snow")
 
@@ -5578,7 +5578,7 @@ MD_MC_Result_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 6.5
+#| fig-width: 4
 #| fig-height: 3.6
 #| dev.args: !expr list(bg = "snow")
 
@@ -5594,7 +5594,7 @@ MD_MC_Result_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 6.5
+#| fig-width: 4
 #| fig-height: 3.6
 #| dev.args: !expr list(bg = "snow")
 
@@ -5610,7 +5610,7 @@ MD_MC_Result_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 6.5
+#| fig-width: 4
 #| fig-height: 3.6
 #| dev.args: !expr list(bg = "snow")
 
