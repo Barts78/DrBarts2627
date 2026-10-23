@@ -5482,8 +5482,9 @@ MD_MC_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 4
+#| fig-width: 9
 #| fig-height: 3.6
+#| dev.args: !expr list(bg = "snow")
 
 # ---------------------------------------------------------------
 # Doughnut charts of the simulated result probabilities. Segments are
@@ -5508,8 +5509,8 @@ plot_outcome_donut <- function(d, title, ncol = 1) {
   # text sizes tuned for the same 4 x 3.6 in panel as the score plots;
   # the 2x2 version uses smaller text so it stays on the plot
   multi    <- ncol > 1
-  pct_size <- if (multi) 1.7 else 2.6
-  ctr_size <- if (multi) 1.4 else 2.2
+  pct_size <- if (multi) 2.4 else 2.6
+  ctr_size <- if (multi) 2 else 2.2
   centre <- d %>% filter(Actual) %>%
     mutate(label = paste0("Actual result\n", actual_label, "\n", format(round(Probability, 1), nsmall = 1), "%"))
   ggplot(d) +
@@ -5523,18 +5524,26 @@ plot_outcome_donut <- function(d, title, ncol = 1) {
     coord_polar(theta = "y", start = 0) +
     scale_x_continuous(limits = c(0, 4.6)) +
     facet_wrap(~ Model, ncol = ncol) +
-    labs(title = title, subtitle = Match_Fixture, caption = My_caption) +
-    theme_void() +
-    theme_ai(title_size = 10, subtitle_size = 8, legend_position = "bottom") +
-    theme(legend.text = element_text(size = 4),
-          legend.title = element_text(size = 4, face = "bold"),
-          legend.key.size = unit(0.3, "cm"),
+    labs(title = title, subtitle = if (multi) Match_Fixture else paste0(Match_Fixture, " | 10000 sims"),
+         caption = My_caption) +
+    theme_ai(title_size = 10, subtitle_size = 8,
+             legend_position = if (multi) "bottom" else "right") +
+    # blank axes/grid (theme_void dropped the snow background, leaving white
+    # bands at the sides of the card)
+    theme(axis.text = element_blank(), axis.title = element_blank(),
+          axis.ticks = element_blank(), axis.line = element_blank(),
+          panel.grid = element_blank(),
+          plot.background = element_rect(fill = "snow", colour = "snow"),
+          panel.background = element_rect(fill = "snow", colour = NA),
+          strip.background = element_rect(fill = "snow", colour = NA)) +
+    theme(legend.text = element_text(size = if (multi) 5 else 7),
+          legend.title = element_text(size = 5, face = "bold"),
+          legend.key.size = unit(if (multi) 0.3 else 0.4, "cm"),
           legend.background = element_rect(fill = "snow", colour = NA),
           legend.margin = margin(0, 0, 0, 0),
-          strip.text = element_text(face = "bold", size = 4),
+          strip.text = element_text(face = "bold", size = 7),
           panel.spacing = unit(0.1, "lines"),
-          #plot.margin = margin(4, 4, 4, 4)
-          )
+          plot.margin = margin(4, 4, 4, 4))
 }
 
 all_models <- bind_rows(donut_data(outcome_prob, "xG only"),
@@ -5542,7 +5551,8 @@ all_models <- bind_rows(donut_data(outcome_prob, "xG only"),
                         donut_data(outcome_prob_max, "Optimistic"),
                         donut_data(outcome_prob_min, "Pessimistic")) %>%
   mutate(Model = factor(Model, levels = c("xG only", "Blended", "Optimistic", "Pessimistic")))
-plot_outcome_donut(all_models, "Match Outcome Probability (10000 sims)", ncol = 2)
+# one row of four so the panel fills the wide card (doughnuts are always round)
+plot_outcome_donut(all_models, "Match Outcome Probability (10000 sims)", ncol = 4)
 ```
 
 ```{r}
@@ -5552,11 +5562,12 @@ plot_outcome_donut(all_models, "Match Outcome Probability (10000 sims)", ncol = 
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 4
+#| fig-width: 6.5
 #| fig-height: 3.6
+#| dev.args: !expr list(bg = "snow")
 
 MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob, "xG only"),
-                                        "Match Outcome Probability (10000 sims)")
+                                        "Match Outcome Probability")
 MD_MC_Result_Plot
 ```
 
@@ -5567,11 +5578,12 @@ MD_MC_Result_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 4
+#| fig-width: 6.5
 #| fig-height: 3.6
+#| dev.args: !expr list(bg = "snow")
 
 MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob_blend, "Blended"),
-                                        "Match Outcome Probability (10000 sims)")
+                                        "Match Outcome Probability")
 MD_MC_Result_Plot
 ```
 
@@ -5582,11 +5594,12 @@ MD_MC_Result_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 4
+#| fig-width: 6.5
 #| fig-height: 3.6
+#| dev.args: !expr list(bg = "snow")
 
 MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob_max, "Optimistic"),
-                                        "Match Outcome Probability (10000 sims)")
+                                        "Match Outcome Probability")
 MD_MC_Result_Plot
 ```
 
@@ -5597,11 +5610,12 @@ MD_MC_Result_Plot
 #| message: false
 #| warning: false
 #| fig-dpi: 200
-#| fig-width: 4
+#| fig-width: 6.5
 #| fig-height: 3.6
+#| dev.args: !expr list(bg = "snow")
 
 MD_MC_Result_Plot <- plot_outcome_donut(donut_data(outcome_prob_min, "Pessimistic"),
-                                        "Match Outcome Probability (10000 sims)")
+                                        "Match Outcome Probability")
 MD_MC_Result_Plot
 ```
 
