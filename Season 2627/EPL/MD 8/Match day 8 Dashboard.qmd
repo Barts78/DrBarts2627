@@ -37,12 +37,8 @@ params:
   comp: "EPL"                  # folder prefix: "CL" -> "CL Games", "CL Players"
   comp_name: "Premier League"
   season: "2627"
-  database: "EPL_LFC_Games_2627"
+  database: "EPLComp_LFC_Games_2627"
   focus_team: "Liverpool"     # team the season database is built around
-  color_home: "#8B1A1A"
-  color_home_text: "white"
-  color_away: "royalblue"
-  color_away_text: "yellow"
   hmom: ""                    # man of the match (home), "" = hide card
   amom: ""                    # man of the match (away), "" = hide card
 ---
@@ -112,21 +108,6 @@ Match_Fixture <- paste0(Match_Home, " vs ", Match_Away, " - ", Game_date)
 #set database
 DataBaseName <- params$database
 
-######################
-#set colours
-#set Home color
-Color_Home <- params$color_home
-
-#set home text color
-Color_Home_Text <- params$color_home_text
-
-#set Away color
-Color_Away <- params$color_away
-
-#set Away text
-Color_Away_Text <- params$color_away_text
-
-#####################
 #load fonts
 #set fonts
 font_add("Awesome", regular = "/Library/Fonts/Font Awesome 7 Brands-Regular-400.otf")
@@ -134,6 +115,28 @@ font_add("Awesome", regular = "/Library/Fonts/Font Awesome 7 Brands-Regular-400.
 #load match data
 fileName <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/WhoScored/Season ", Season, "/", Comp, " Games/Processed Games/", Match_Fixture, ".xlsx")
 plottingData <- read_xlsx(fileName)
+
+######################
+#set colours from the match data (teamColor / teamTextColor come with the
+#shot data, so they sit on each team's shot rows)
+team_colour_from_data <- function(team, col) {
+  if (!col %in% names(plottingData)) return(NA_character_)
+  v <- plottingData[[col]][plottingData$TeamName == team]
+  v <- trimws(as.character(v[!is.na(v) & nzchar(trimws(as.character(v)))]))
+  if (length(v)) names(sort(table(v), decreasing = TRUE))[1] else NA_character_
+}
+# readable text colour for a background if the data has none
+contrast_text <- function(bg) {
+  rgb <- grDevices::col2rgb(bg)[, 1] / 255
+  if (sum(rgb * c(0.299, 0.587, 0.114)) > 0.6) "black" else "white"
+}
+Color_Home      <- coalesce(team_colour_from_data(Match_Home, "teamColor"), "#8B1A1A")
+Color_Away      <- coalesce(team_colour_from_data(Match_Away, "teamColor"), "royalblue")
+Color_Home_Text <- coalesce(team_colour_from_data(Match_Home, "teamTextColor"), contrast_text(Color_Home))
+Color_Away_Text <- coalesce(team_colour_from_data(Match_Away, "teamTextColor"), contrast_text(Color_Away))
+message("Colours - ", Match_Home, ": ", Color_Home, " / ", Color_Home_Text,
+        " | ", Match_Away, ": ", Color_Away, " / ", Color_Away_Text)
+#####################
 
 #load player data
 PlayerfileName <- paste0("~/Documents/Dropbox files/AI lfc data/Data Sets/WhoScored/Season ", Season, "/", Comp, " Players/Processed Games/", Match_Fixture, " - PlayerData.xlsx")
@@ -715,6 +718,7 @@ compute_season_summary <- function(data, group_vars) {
     mutate(Successful_Touch = ifelse(isTouch == "TRUE", 1, 0),
            TeamEPV = ifelse(str_detect(`outcomeType/value`, "1"), EPVvalue, 0),
            TeamEPV = as.numeric(TeamEPV),
+           Own_Goals = if ("Own_Goals" %in% names(data)) coalesce(as.numeric(data$Own_Goals), 0) else 0,
            Match_day = as.numeric(Match_day)) %>%
     group_by(across(all_of(group_vars))) %>%
     summarise(Match_day = first(Match_day),
@@ -748,6 +752,7 @@ compute_season_summary <- function(data, group_vars) {
                        Offside_Won, 
                        Offside_Lost, 
                        TeamEPV, 
+                       Own_Goals,
                        Defensive_Third_Touches, 
         Middle_Third_Touches, 
         SixYard_Box_Touches, 
@@ -772,6 +777,10 @@ compute_season_summary <- function(data, group_vars) {
       #.groups = "drop"
     ) %>%
     #select(-n_matches) %>%
+    # own goals: the OG row sits with the conceding team, so add the
+    # opponent's OGs (other rows in the same group) to this team's Goals
+    mutate(Goals = Goals + (sum(Own_Goals) - Own_Goals)) %>%
+    select(-Own_Goals) %>%
     mutate(
       In_play_time = round(In_play_time / 60, 1),
       Possession   = round((Touches / (sum(Touches))) * 100, 1),
@@ -811,7 +820,8 @@ compute_summary <- function(data, group_vars) {
   data %>%
     mutate(Successful_Touch = ifelse(isTouch == "TRUE", 1, 0),
            TeamEPV = ifelse(str_detect(`outcomeType/value`, "1"), EPVvalue, 0),
-           TeamEPV = as.numeric(TeamEPV)) %>%
+           TeamEPV = as.numeric(TeamEPV),
+           Own_Goals = if ("Own_Goals" %in% names(data)) coalesce(as.numeric(data$Own_Goals), 0) else 0) %>%
     group_by(across(all_of(group_vars))) %>%
         summarise(Match_day = first(Match_day), 
                   across(c(Goals, In_play_time, Touches, UnSuccessful_Touches, PK_Box_Touches,
@@ -843,6 +853,7 @@ compute_summary <- function(data, group_vars) {
                        Offside_Won, 
                        Offside_Lost, 
                        TeamEPV, 
+                       Own_Goals,
                        Defensive_Third_Touches, 
         Middle_Third_Touches, 
         SixYard_Box_Touches, 
@@ -863,6 +874,10 @@ compute_summary <- function(data, group_vars) {
         Ground_Duels_Lost,
         ),
                  sum, na.rm = TRUE)) %>%
+    # own goals: the OG row sits with the conceding team, so add the
+    # opponent's OGs (other rows in the same group) to this team's Goals
+    mutate(Goals = Goals + (sum(Own_Goals) - Own_Goals)) %>%
+    select(-Own_Goals) %>%
     mutate(In_play_time = round(In_play_time / 60, 1),
            Possession = round((Touches/(sum(Touches)))*100,1),
            Field_Tilt = round((Final_Third_Touches/(sum(Final_Third_Touches)))*100,1),
@@ -1007,6 +1022,18 @@ TouchPlayerPlot_AI <- function(
     drop_na(playerId, x, y) %>%
     filter(between(expandedMinute, plot_start, plot_finish))
 
+  # nothing to draw in this window: return a note instead of a facet error
+  empty_note <- function() {
+    ggplot() +
+      annotate("text", x = 0.5, y = 0.5, size = 4,
+               label = paste0("Not enough touches between minute ", round(plot_start), " and ", round(plot_finish), " to draw touch areas")) +
+      labs(title = paste(title, "Player Touch Areas"), subtitle = subtitle, caption = My_caption) +
+      theme_void() +
+      theme(plot.background = element_rect(colour = "snow", fill = "snow"),
+            plot.caption = element_markdown())
+  }
+  if (nrow(data) == 0) return(empty_note())
+
   list_data <- split(data, data$playerId)
 
   # Use appropriate shape function
@@ -1030,7 +1057,8 @@ facet_levels <- data %>%
   summarise(match_minutes = max(expandedMinute, na.rm = TRUE), .groups = "drop") %>%
   group_by(playerId) %>%
   summarise(total_minutes = sum(match_minutes, na.rm = TRUE), .groups = "drop") %>%
-  filter(total_minutes > 5) %>%
+  # players with 5+ minutes; for a short window (e.g. an early first sub) keep everyone
+  { d <- .; if (any(d$total_minutes > 5)) filter(d, total_minutes > 5) else d } %>%
   left_join(
     data %>%
       distinct(playerId, role),
@@ -1039,6 +1067,9 @@ facet_levels <- data %>%
   mutate(role = factor(role, levels = role_levels)) %>%
   arrange(role, desc(total_minutes), playerId) %>%
   pull(playerId)
+
+# nothing to draw in this window: return a note instead of a facet error
+if (length(facet_levels) == 0 || is.null(touch_area_data) || nrow(touch_area_data) == 0) return(empty_note())
 
 # --- 3) Relevel the faceting variable in ALL datasets used in the plot --------
 data <- data %>%
@@ -3204,15 +3235,21 @@ HomePPDO <- round(sum(HomeShootingP + (1 - AwayShootingP))*1000, 0)
 AwayPPDO <- round(sum(AwayShootingP + (1 - HomeShootingP))*1000, 0)
 
 #prepare first sub time data (min before sub)
-firstSubHome <- plottingData %>%
-  filter(TeamName == Match_Home, SubTime != 0) %>%
-  summarise(firstsubhome = min(SubTime)) %>%
-  pull(firstsubhome)
-
-firstSubAway <- plottingData %>%
-  filter(TeamName == Match_Away, SubTime != 0) %>%
-  summarise(firstsubaway = min(SubTime)) %>%
-  pull(firstsubaway)
+# "Up to 1st subs" windows. Subs before min_sub_window (early injury subs)
+# are skipped so the window is long enough to plot; the next sub is used.
+# No subs (or no SubTime values) -> full match, rather than Inf / NA.
+min_sub_window <- 15
+first_sub_time <- function(team) {
+  s <- suppressWarnings(as.numeric(plottingData$SubTime[plottingData$TeamName == team]))
+  s <- sort(unique(s[!is.na(s) & s != 0]))
+  if (length(s) && min(s) < min_sub_window)
+    message(team, ": early sub at ", min(s), " skipped for the 'up to 1st subs' charts")
+  s <- s[s >= min_sub_window]
+  if (length(s)) min(s) else max(as.numeric(plottingData$expandedMinute), na.rm = TRUE)
+}
+firstSubHome <- first_sub_time(Match_Home)
+firstSubAway <- first_sub_time(Match_Away)
+message("First sub - ", Match_Home, ": ", firstSubHome, " | ", Match_Away, ": ", firstSubAway)
 
 #first goal
 plottingData <- plottingData %>%
@@ -3220,6 +3257,26 @@ plottingData <- plottingData %>%
   mutate(First_goal = min(First_goal, na.rm = TRUE))
 
 First_Goal <- first(na.omit(plottingData$First_goal))
+
+# ---- own goals: credit them to the team that benefits ----------------
+# An OG row carries the conceding team's TeamName and Goals = 0, so per-team
+# goal markers miss it. team_rows_with_og() returns a team's rows without its
+# own OGs, plus the opponent's OGs relabelled as a goal for this team, with
+# the action counts zeroed (an OG adds no shots, xG, touches or EPV for them).
+og_zero_cols <- c("xG", "NPxG", "xGOT", "EPVvalue", "EPV", "TeamEPV", "TeamxT", "Touches",
+                  "Attempted_Passes", "Successful_Passes", "Successful_Carries",
+                  "TotalShots", "OFShots", "OTShots", "Blocked_Shot")
+team_rows_with_og <- function(df, team) {
+  df %>%
+    mutate(.og = coalesce(as.numeric(Own_Goals) == 1, FALSE),
+           .og_for = .og & TeamName != team) %>%
+    filter((TeamName == team & !.og) | .og_for) %>%
+    mutate(across(any_of(og_zero_cols), ~ ifelse(.og_for, 0, .x)),
+           Goals = ifelse(.og_for, 1, Goals),
+           Own_Goals = ifelse(.og_for, 0, Own_Goals),
+           TeamName = ifelse(.og_for, team, TeamName)) %>%
+    select(-.og, -.og_for)
+}
 
 
 # set-up data frame from main variables above for summary tables
@@ -4642,6 +4699,21 @@ Awaydashboard_data <- plottingData %>%
   mutate(Goal_point_X = as.numeric(Goal_point_X)) %>%
   mutate(Goal_point_Y = as.numeric(Goal_point_Y)) %>%
   select(x, y, Goal_point_Y, Goal_point_X, TotalxG, TotalNPxG, TotalxGOT, situation, TeamName, TotalShots, xG, NPxG, xGOT, OTShots, minute, expandedMinute, result = type, player = playerId, period, Game_Period)
+
+# own goals for the xG line plots: not shots, so they stay out of the shot
+# data above, but they get a goal marker on the benefiting team's xG line
+og_xg_marks <- function(team, team_data) {
+  plottingData %>%
+    filter(coalesce(as.numeric(Own_Goals) == 1, FALSE), TeamName != team, period < 5) %>%
+    transmute(expandedMinute = as.numeric(expandedMinute),
+              Goal_point_X = expandedMinute,
+              Goal_point_Y = sapply(expandedMinute, function(m) {
+                v <- team_data$TotalxG[as.numeric(team_data$expandedMinute) <= m]
+                if (length(v)) max(v) else 0 }),
+              result = paste0("OG (", short_name(playerId), ")"))
+}
+HomeOG_xG_marks <- og_xg_marks(Match_Home, Homedashboard_data)
+AwayOG_xG_marks <- og_xg_marks(Match_Away, Awaydashboard_data)
 
 #calculate match actual goals
 # actual scoreline (includes own goals, which the shot data filters out)
@@ -6753,8 +6825,7 @@ PassConnectionTreeAwayPlot
 touchpass_bar_data <- plottingData 
 
 touchpass_bar_data <- touchpass_bar_data %>%
-      filter(!Own_Goals == 1 & TeamName == Match_Home) %>%
-  filter(TeamName == Match_Home)
+  team_rows_with_og(Match_Home)   # own rows, plus opponent OGs as goals
 
 touchpass_bar_data <- touchpass_bar_data %>%
   group_by(expandedMinute, minute) %>%
@@ -6826,8 +6897,7 @@ touchpass_bar_plot
 Awaytouchpass_bar_data <- plottingData 
 
 Awaytouchpass_bar_data <- Awaytouchpass_bar_data %>%
-  filter(!Own_Goals == 1 & TeamName == Match_Away) %>%
-  filter(TeamName == Match_Away)
+  team_rows_with_og(Match_Away)   # own rows, plus opponent OGs as goals
 
 Awaytouchpass_bar_data <- Awaytouchpass_bar_data %>%
   group_by(expandedMinute, minute) %>%
@@ -6915,15 +6985,20 @@ passing_sequencesHome <- successful_passes %>%
   ) %>%
   ungroup() %>%
   select(
-    minute, second, TeamName, playerId, type, `type/value`, outcome, `outcomeType/value`, pass_count, passing_seq, Pchain, PChain_pass_count, x, y, Distance_Metre, PDistance, Distance_seq, PChain_distance_count, Game_Period, period
+    minute, second, TeamName, playerId, type, `type/value`, outcome, `outcomeType/value`, pass_count, passing_seq, Pchain, PChain_pass_count, x, y, Distance_Metre, PDistance, Distance_seq, PChain_distance_count, Game_Period, period, Own_Goals
   ) %>%
   mutate(Pchain_Length = ifelse(PChain_pass_count <= 5, "VLow",
                                 ifelse(PChain_pass_count <= 10 & PChain_pass_count > 5.5, "Low",
                                        ifelse(PChain_pass_count <= 15 & PChain_pass_count > 10.5, "Medium",
                                               ifelse(PChain_pass_count > 15.5, "High", NA))))) %>%
   mutate(PchainN = cumsum(passing_seq == 0) + 1) %>%
-  mutate(Goal_point_X = ifelse(TeamName == Match_Home & (str_detect(type, "Goal")), paste0(x), NA)) %>%
-  mutate(Goal_point_Y = ifelse(TeamName == Match_Home & (str_detect(type, "Goal")), paste0(y), NA)) %>%
+  # goals for this team: its own (not OGs) plus opponent OGs, mirrored into this team's direction
+  mutate(.og = coalesce(as.numeric(Own_Goals) == 1, FALSE),
+         Goal_point_X = case_when(TeamName == Match_Home & str_detect(type, "Goal") & !.og ~ x,
+                                  TeamName != Match_Home & .og ~ 100 - x),
+         Goal_point_Y = case_when(TeamName == Match_Home & str_detect(type, "Goal") & !.og ~ y,
+                                  TeamName != Match_Home & .og ~ 100 - y)) %>%
+  select(-.og) %>%
   mutate(Goal_point_X = as.numeric(Goal_point_X)) %>%
   mutate(Goal_point_Y = as.numeric(Goal_point_Y))
 
@@ -6944,15 +7019,20 @@ passing_sequencesAway <- successful_passes %>%
   ) %>%
   ungroup() %>%
   select(
-    minute, second, TeamName, playerId, type, `type/value`, outcome, `outcomeType/value`, pass_count, passing_seq, Pchain, PChain_pass_count, x, y, Distance_Metre, PDistance, Distance_seq, PChain_distance_count, Game_Period, period
+    minute, second, TeamName, playerId, type, `type/value`, outcome, `outcomeType/value`, pass_count, passing_seq, Pchain, PChain_pass_count, x, y, Distance_Metre, PDistance, Distance_seq, PChain_distance_count, Game_Period, period, Own_Goals
   ) %>%
   mutate(Pchain_Length = ifelse(PChain_pass_count <= 5, "VLow",
                                 ifelse(PChain_pass_count <= 10 & PChain_pass_count > 5.5, "Low",
                                        ifelse(PChain_pass_count <= 15 & PChain_pass_count > 10.5, "Medium",
                                               ifelse(PChain_pass_count > 15.5, "High", NA))))) %>%
   mutate(PchainN = cumsum(passing_seq == 0) + 1) %>%
-  mutate(Goal_point_X = ifelse(TeamName == Match_Away & (str_detect(type, "Goal")), paste0(x), NA)) %>%
-  mutate(Goal_point_Y = ifelse(TeamName == Match_Away & (str_detect(type, "Goal")), paste0(y), NA)) %>%
+  # goals for this team: its own (not OGs) plus opponent OGs, mirrored into this team's direction
+  mutate(.og = coalesce(as.numeric(Own_Goals) == 1, FALSE),
+         Goal_point_X = case_when(TeamName == Match_Away & str_detect(type, "Goal") & !.og ~ x,
+                                  TeamName != Match_Away & .og ~ 100 - x),
+         Goal_point_Y = case_when(TeamName == Match_Away & str_detect(type, "Goal") & !.og ~ y,
+                                  TeamName != Match_Away & .og ~ 100 - y)) %>%
+  select(-.og) %>%
   mutate(Goal_point_X = as.numeric(Goal_point_X)) %>%
   mutate(Goal_point_Y = as.numeric(Goal_point_Y))
 
@@ -12090,8 +12170,7 @@ EPVPlotData <- plottingData %>%
   mutate(Home_Cumalative_EPV = cumsum(Home_EPV))
 
 EPVPlotData <- EPVPlotData %>%
-  filter(TeamName == Match_Home) %>%
-  filter(!Own_Goals == 1 & TeamName == Match_Home) %>%
+  team_rows_with_og(Match_Home) %>%   # own rows, plus opponent OGs as goals
   mutate(isGoal = ifelse(type == "Goal", 1, 0)) %>%
   mutate(Goal_point_X = ifelse(str_detect(Goals, "1"), paste0(expandedMinute), NA)) %>%
   mutate(Goal_point_Y = ifelse(str_detect(Goals, "1"), paste0(Home_Cumalative_EPV), NA)) %>%
@@ -12128,8 +12207,7 @@ AwayEPVPlotData <- plottingData %>%
   mutate(Away_Cumalative_EPV = cumsum(Away_EPV))
 
 AwayEPVPlotData <- AwayEPVPlotData %>%
-  filter(TeamName == Match_Away) %>%
-  filter(!Own_Goals == 1 & TeamName == Match_Away) %>%
+  team_rows_with_og(Match_Away) %>%   # own rows, plus opponent OGs as goals
   mutate(isGoal = ifelse(type == "Goal", 1, 0)) %>%
   mutate(Goal_point_X = ifelse(str_detect(Goals, "1"), paste0(expandedMinute), NA)) %>%
   mutate(Goal_point_Y = ifelse(str_detect(Goals, "1"), paste0(Away_Cumalative_EPV), NA)) %>%
@@ -12172,7 +12250,7 @@ EPVdfAway <- AwayEPVPlotData %>%
 EPVAreaPlotData <- plottingData
 
 EPVAreaPlotData <- EPVAreaPlotData %>%
-  filter(TeamName == Match_Home)
+  team_rows_with_og(Match_Home)   # own rows, plus opponent OGs as goals
 
 #set final plot data frame
 EPVAreaPlotData <- EPVAreaPlotData %>%
@@ -12193,7 +12271,7 @@ EPVAreaPlotData <- EPVAreaPlotData %>%
 AwayEPVAreaPlotData <- plottingData
 
 AwayEPVAreaPlotData <- AwayEPVAreaPlotData %>%
-  filter(TeamName == Match_Away)
+  team_rows_with_og(Match_Away)   # own rows, plus opponent OGs as goals
 
 #set final plot data frame
 AwayEPVAreaPlotData <- AwayEPVAreaPlotData %>%
@@ -14509,8 +14587,7 @@ AwayDefEPVHeatMapplotFTU
 HomePPDAPlotData <- plottingData
 
 HomePPDAPlotData <- HomePPDAPlotData %>%
-  filter(TeamName == Match_Home) %>%
-  filter(!Own_Goals == 1  & TeamName == Match_Home) %>%
+  team_rows_with_og(Match_Home) %>%   # own rows, plus opponent OGs as goals
   mutate(isGoal = ifelse(type == "Goal", 1, 0)) %>%
   mutate(Goal_point_X = ifelse(str_detect(Goals, "1"), paste0(expandedMinute), NA)) %>%
   mutate(Goal_point_Y = ifelse(str_detect(Goals, "1"), paste0(Home_PPDA_Cumalative), NA)) %>%
@@ -14531,8 +14608,7 @@ dfHome <- HomePPDAPlotData %>%
 AwayPPDAPlotData <- plottingData
 
 AwayPPDAPlotData <- AwayPPDAPlotData %>%
-  filter(TeamName == Match_Away) %>%
-  filter(!Own_Goals == 1  & TeamName == Match_Away) %>%
+  team_rows_with_og(Match_Away) %>%   # own rows, plus opponent OGs as goals
   mutate(isGoal = ifelse(type == "Goal", 1, 0)) %>%
   mutate(Goal_point_X = ifelse(str_detect(Goals, "1"), paste0(expandedMinute), NA)) %>%
   mutate(Goal_point_Y = ifelse(str_detect(Goals, "1"), paste0(Away_PPDA_Cumalative), NA)) %>%
@@ -17500,7 +17576,7 @@ PressNetworkData_home <- PressNetworkData_home %>%
   GoalMin <- plottingData 
   
   GoalMin_Home <- GoalMin %>%
-    filter(TeamName == Match_Home) %>%
+    team_rows_with_og(Match_Home) %>%   # own rows, plus opponent OGs as goals
     mutate(Goal_point = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
     mutate(Goal_point = as.numeric(Goal_point)) %>%
     mutate(Goal_point_min = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
@@ -17706,7 +17782,7 @@ PressNetworkData_home <- PressNetworkData_home %>%
   GoalMin <- plottingData 
   
   GoalMin_Away <- GoalMin %>%
-    filter(TeamName == Match_Away) %>%
+    team_rows_with_og(Match_Away) %>%   # own rows, plus opponent OGs as goals
     mutate(Goal_point = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
     mutate(Goal_point = as.numeric(Goal_point)) %>%
     mutate(Goal_point_min = ifelse(str_detect(Goals, "1"), paste0(minute), NA)) %>%
@@ -18721,6 +18797,9 @@ PressNetworkPlot_away <- PressNetworkData_away %>%
   #add ball image for goals
   geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point_X, y = Goal_point_Y, image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
   geom_label_repel(aes(x = Goal_point_X, y = Goal_point_Y, label = paste0(result, " Min:", expandedMinute, "\nxG:", xG)), size = 1.5) +
+  # own goals scored for this team
+  geom_image(data = HomeOG_xG_marks, inherit.aes = FALSE, mapping = aes(x = Goal_point_X, y = Goal_point_Y, image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
+  geom_label_repel(data = HomeOG_xG_marks, aes(x = Goal_point_X, y = Goal_point_Y, label = paste0(result, " Min:", expandedMinute)), size = 1.5) +
 
   #formatting
   expand_limits(x = 0, y = 0) +
@@ -18771,6 +18850,9 @@ xGLinePlotAway <- Awaydashboard_data %>%
   #add ball image for goals
   geom_image(inherit.aes = FALSE, mapping = aes(x = Goal_point_X, y = Goal_point_Y, image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
   geom_label_repel(aes(x = Goal_point_X, y = Goal_point_Y, label = paste0(result, " Min:", expandedMinute, "\nxG:", xG)), size = 1.5) +
+  # own goals scored for this team
+  geom_image(data = AwayOG_xG_marks, inherit.aes = FALSE, mapping = aes(x = Goal_point_X, y = Goal_point_Y, image = "~/Documents/Dropbox files/AI LFC data/Icons/ball2.png"), size = 0.05) +
+  geom_label_repel(data = AwayOG_xG_marks, aes(x = Goal_point_X, y = Goal_point_Y, label = paste0(result, " Min:", expandedMinute)), size = 1.5) +
   
 
   #formatting
