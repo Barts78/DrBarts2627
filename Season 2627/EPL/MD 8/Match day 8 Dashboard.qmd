@@ -146,6 +146,15 @@ Playerdata <- read_xlsx(PlayerfileName)
 fileName <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/WhoScored/Databases/", DataBaseName, ".xlsx")
 SeasonData <- read_xlsx(fileName)
 
+# keep only the focus team's games, so season averages are for the focus team.
+# Matched on TeamName (WhoScored names, same as the params) rather than the
+# FotMob homeTeam/awayTeam, whose spellings can differ (e.g. "Brighton & Hove Albion")
+SeasonData <- SeasonData %>%
+  group_by(game_name) %>%
+  filter(any(TeamName == Focus_Team)) %>%
+  ungroup()
+message("Season database: ", n_distinct(SeasonData$game_name), " ", Focus_Team, " games")
+
 #add in team group to data base
 SeasonData <- SeasonData %>%
   mutate(Team_Group = ifelse(TeamName == Focus_Team, Focus_Team, "All Oppo"))
@@ -4026,8 +4035,10 @@ AwayPPDA_Simple <- AwayPPDA
 if (ppda_definition == "standard") {
   HomePPDA <- HomePPDA_Proper
   AwayPPDA <- AwayPPDA_Proper
-  # cumulative standard PPDA through the match, in event order, replacing the
-  # pipeline's cumulative columns used by the PPDA development plots
+  # cumulative standard PPDA through the match, in event order. Files from the
+  # V7 pipeline onward already hold these (PPDA_Pass column present), so this
+  # only rebuilds them for older processed files that used the simple version.
+  if (!"PPDA_Pass" %in% names(plottingData)) {
   tv_p  <- num0(plottingData, "type/value")
   out_p <- num0(plottingData, "outcomeType/value")
   x_p   <- numNA(plottingData, "x")
@@ -4038,6 +4049,7 @@ if (ppda_definition == "standard") {
                                                 cumsum(da_zone & plottingData$TeamName == Match_Home))
   plottingData$Away_PPDA_Cumalative <- cum_ppda(cumsum(pass_own60 & plottingData$TeamName == Match_Home),
                                                 cumsum(da_zone & plottingData$TeamName == Match_Away))
+  }
 }
 # y-axis ceiling for the PPDA development plots (early-match values spike
 # while few defensive actions have been made)
