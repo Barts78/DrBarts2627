@@ -116,6 +116,28 @@ font_add("Awesome", regular = "/Library/Fonts/Font Awesome 7 Brands-Regular-400.
 fileName <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/WhoScored/Season ", Season, "/", Comp, " Games/Processed Games/", Match_Fixture, ".xlsx")
 plottingData <- read_xlsx(fileName)
 
+# ---- cup games: extra time and penalty shoot-outs ----
+# shoot-out kicks (period 5) are not match play: leave them out of the match stats;
+# extra-time stoppage minutes have no Game_Period in the processed data: label them
+tidy_periods <- function(d) {
+  p <- suppressWarnings(as.numeric(d$period))
+  n_so <- sum(p %in% 5)
+  if (n_so) message("Penalty shoot-out events left out: ", n_so)
+  d <- d[!(p %in% 5), , drop = FALSE]
+  p <- p[!(p %in% 5)]
+  if ("Game_Period" %in% names(d)) {
+    d$Game_Period <- dplyr::case_when(
+      !is.na(d$Game_Period) ~ as.character(d$Game_Period),
+      p == 1 ~ "31 - 45",
+      p == 2 ~ "90 +",
+      p == 3 ~ "First Half Extra Time",
+      p == 4 ~ "Extra Time Injury Time",
+      TRUE   ~ "Other")
+  }
+  d
+}
+plottingData <- tidy_periods(plottingData)
+
 ######################
 #set colours from the match data (teamColor / teamTextColor come with the
 #shot data, so they sit on each team's shot rows)
@@ -173,6 +195,7 @@ if (is.null(SeasonData)) {   # e.g. no FA Cup database yet: take this competitio
   SeasonData <- read_season_db(paste0("AllComp_LFC_Games_", Season), comp_filter = Comp)
 }
 if (is.null(SeasonData)) stop("No season database found for ", Comp, " ", Season, " in ", db_dir)
+SeasonData <- tidy_periods(SeasonData)
 message("Season database (", DataBaseName, "): ", n_distinct(SeasonData$game_name), " ", Focus_Team, " games")
 
 #add in team group to data base
@@ -4956,7 +4979,7 @@ MatchSummaryHalfsTable <- MatchSummaryHalfData %>%
     locations = cells_column_spanners('Passes'),
     style = list(cell_text(weight = "bold", size = 16))) %>%
     tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummaryHalfData$Half)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummaryHalfData$Half))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
   tab_style(
@@ -5018,7 +5041,7 @@ MatchSummaryPeriodTable <- MatchSummaryPeriodData %>%
     locations = cells_column_spanners('Passes'),
     style = list(cell_text(weight = "bold", size = 16))) %>%
   tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummaryPeriodData$Game_Period)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummaryPeriodData$Game_Period))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
 
@@ -5080,7 +5103,7 @@ MatchSummaryQuarterTable <- MatchSummaryQuarterData %>%
     locations = cells_column_spanners('Passes'),
     style = list(cell_text(weight = "bold", size = 16))) %>%
   tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummaryPeriodData$Game_Quarter)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummaryQuarterData$Game_Quarter))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
 
@@ -5157,7 +5180,7 @@ MatchSummaryGameStateTable <- MatchSummaryGameStateData %>%
     )
   ) %>%
     tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummaryGameStateData$Game_State)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummaryGameStateData$Game_State))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
   tab_style(
@@ -5245,7 +5268,7 @@ MatchSummarySeasonHalfsTable <- MatchSummarySeasonHalfData %>%
     locations = cells_column_spanners('Passes'),
     style = list(cell_text(weight = "bold", size = 16))) %>%
     tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummarySeasonHalfData$Half)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummarySeasonHalfData$Half))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
     tab_style(
@@ -5306,7 +5329,7 @@ MatchSummarySeasonPeriodTable <- MatchSummarySeasonPeriodData %>%
     locations = cells_column_spanners('Passes'),
     style = list(cell_text(weight = "bold", size = 16))) %>%
     tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummarySeasonPeriodData$Game_Period)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummarySeasonPeriodData$Game_Period))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
   tab_style(
@@ -5381,7 +5404,7 @@ MatchSummarySeasonGameStateTable <- MatchSummarySeasonGameStateData %>%
     )
   ) %>%
     tab_style(
-    locations = cells_row_groups(groups = unique(MatchSummarySeasonGameStateData$Game_State)),
+    locations = cells_row_groups(groups = unique(na.omit(MatchSummarySeasonGameStateData$Game_State))),
     style = cell_text(weight = "bold", size = 16, color = "white")
   ) %>%
   
