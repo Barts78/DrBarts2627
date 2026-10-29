@@ -117,25 +117,42 @@ fileName <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/WhoScored/Se
 plottingData <- read_xlsx(fileName)
 
 # ---- cup games: extra time and penalty shoot-outs ----
-# shoot-out kicks (period 5) are not match play: leave them out of the match stats;
-# extra-time stoppage minutes have no Game_Period in the processed data: label them
+# Match stats cover periods 1-4 (normal time + extra time). Shoot-out kicks (period 5) are
+# not match play: their result is kept for the headline score only, then the events are
+# removed from the match and season data. Extra-time stoppage minutes, which the processed
+# data leaves without a Game_Period label, get one.
+shootout_result <- function(d) {
+  p  <- suppressWarnings(as.numeric(d$period))
+  so <- d[p %in% 5, , drop = FALSE]
+  if (!nrow(so)) return(NULL)
+  scored <- suppressWarnings(as.numeric(so$Goals)) %in% 1          # a converted kick
+  h <- sum(so$TeamName[scored] == Match_Home, na.rm = TRUE)
+  a <- sum(so$TeamName[scored] == Match_Away, na.rm = TRUE)
+  winner <- if (h > a) Match_Home else if (a > h) Match_Away else NA_character_
+  list(home = h, away = a,
+       text = if (is.na(winner)) paste0("Penalties ", h, "\u2013", a) else
+         paste0(winner, " win ", max(h, a), "\u2013", min(h, a), " on penalties"))
+}
 tidy_periods <- function(d) {
   p <- suppressWarnings(as.numeric(d$period))
-  n_so <- sum(p %in% 5)
-  if (n_so) message("Penalty shoot-out events left out: ", n_so)
+  if (any(p %in% 5)) message("Penalty shoot-out: ", sum(p %in% 5), " events left out of the match stats")
   d <- d[!(p %in% 5), , drop = FALSE]
   p <- p[!(p %in% 5)]
-  if ("Game_Period" %in% names(d)) {
-    d$Game_Period <- dplyr::case_when(
-      !is.na(d$Game_Period) ~ as.character(d$Game_Period),
-      p == 1 ~ "31 - 45",
-      p == 2 ~ "90 +",
-      p == 3 ~ "First Half Extra Time",
-      p == 4 ~ "Extra Time Injury Time",
-      TRUE   ~ "Other")
-  }
+  label_missing <- function(x, fallback) dplyr::case_when(
+    !is.na(x) ~ as.character(x),
+    p == 1 ~ "31 - 45",
+    p == 2 ~ "90 +",
+    p == 3 ~ "First Half Extra Time",
+    p == 4 ~ "Extra Time Injury Time",
+    TRUE   ~ fallback)
+  if ("Game_Period" %in% names(d))  d$Game_Period  <- label_missing(d$Game_Period, "Other")
+  if ("Game_Quarter" %in% names(d)) d$Game_Quarter <- label_missing(d$Game_Quarter, "Injury Time")
   d
 }
+
+Shootout <- shootout_result(plottingData)     # NULL when the game had no shoot-out
+PK_Text  <- if (is.null(Shootout)) NULL else Shootout$text
+if (!is.null(PK_Text)) message(PK_Text)
 plottingData <- tidy_periods(plottingData)
 
 ######################
@@ -3500,6 +3517,7 @@ if (HomeGoals == AwayGoals) {
   }
   result_txt <- paste(winner, "beat", loser, score, xg_clause)
 }
+if (!is.null(PK_Text)) result_txt <- paste0(result_txt, "; ", PK_Text)
 summary_line <- paste0(paste(c(result_txt, tilt_phrase(Match_Home), tilt_phrase(Match_Away)),
                              collapse = ". "), ".")
 
@@ -4217,7 +4235,9 @@ htmltools::div(
                          htmltools::div(style = scorers_css, scorer_list(Match_Home))),
       htmltools::tags$td(style = td_score,
                          htmltools::div(paste0(HomeGoals, " \u2013 ", AwayGoals),
-                                        style = "font-size:3.2rem;font-weight:800;letter-spacing:0.05em;line-height:1.1;")),
+                                        style = "font-size:3.2rem;font-weight:800;letter-spacing:0.05em;line-height:1.1;"),
+                         if (!is.null(PK_Text)) htmltools::div(PK_Text,
+                                        style = "font-size:1.1rem;font-weight:600;margin-top:0.3rem;color:#1A1A1A;")),
       htmltools::tags$td(style = td_team,
                          team_badge(Match_Away, Color_Away, Color_Away_Text),
                          htmltools::div(style = scorers_css, scorer_list(Match_Away)))
@@ -4653,6 +4673,7 @@ MatchSummarySeasonHalfData <- compute_summary(SeasonData %>% mutate(Half = case_
   period == 2 ~ "Second Half",
   period == 3 ~ "First Half Extra Time",
   period == 4 ~ "Second Half Extra Time",
+  period == 5 ~ "Penalty Shoot-out",
   TRUE ~ "Injury Time")
 ), group_vars = c("Half", "Team_Group"))
 
@@ -4698,6 +4719,7 @@ MatchSummaryHalfData <- compute_summary(plottingData %>% mutate(Half = case_when
   period == 2 ~ "Second Half",
   period == 3 ~ "First Half Extra Time",
   period == 4 ~ "Second Half Extra Time",
+  period == 5 ~ "Penalty Shoot-out",
   TRUE ~ "Injury Time")
 ), group_vars = c("Half", "TeamName"))
 
