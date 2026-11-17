@@ -2734,6 +2734,215 @@ venue_table <- game_kpis %>%
   select(Metric, any_of(c("Home", "Away")))
 ```
 
+# Season Trends
+
+## Row {height="130px"}
+
+```{r}
+#| content: valuebox
+#| title: Record
+list(icon = "trophy", color = "primary",
+     value = paste0(sum(games$Result == "W"), "W ", sum(games$Result == "D"), "D ", sum(games$Result == "L"), "L"))
+```
+
+```{r}
+#| content: valuebox
+#| title: Goals (for - against)
+list(icon = "dribbble", color = "primary", value = paste0(sum(games$GF), " - ", sum(games$GA)))
+```
+
+```{r}
+#| content: valuebox
+#| title: xG (for - against)
+list(icon = "bullseye", color = "primary",
+     value = paste0(f2(sum(game_stats$xG[game_stats$TeamName == Match_Home])), " - ",
+                    f2(sum(game_stats$xG[game_stats$TeamName == Match_Away]))))
+```
+
+```{r}
+#| content: valuebox
+#| title: PPDA (standard, season)
+list(icon = "shield", color = "primary", value = paste0(HomePPDA, " / ", AwayPPDA))
+```
+
+## Row
+
+```{r}
+#| title: xG For and Against by Game
+#| label: trend xg by game
+#| fig-width: 10
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+ggplot(game_stats, aes(x = Game_Label, y = xG, fill = TeamName)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.75, colour = "#454545", linewidth = 0.2, alpha = 0.85) +
+  geom_line(aes(y = xG_roll3, colour = TeamName, group = TeamName), linewidth = 0.8) +
+  geom_point(aes(y = Goals, group = TeamName), position = position_dodge(width = 0.8),
+             shape = 21, fill = "white", colour = "black", size = 2) +
+  scale_fill_manual(values = team_cols, name = NULL) +
+  scale_colour_manual(values = team_cols, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "xG For and Against by Game",
+       subtitle = paste0(Season_Label, " | bars = xG, white dots = goals, line = 3-game rolling xG"),
+       x = NULL, y = "xG / Goals", caption = My_caption) +
+  line_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+## Row
+
+```{r}
+#| title: Goals vs xG Race
+#| label: trend goals vs xg race
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+race <- game_stats %>%
+  select(TeamName, Game_No, Game_Label, `Goals` = Cum_Goals, `xG` = Cum_xG) %>%
+  pivot_longer(c(Goals, xG), names_to = "Measure", values_to = "Value") %>%
+  mutate(Series = paste0(ifelse(TeamName == Match_Home, "For", "Against"), " - ", Measure))
+
+ggplot(race, aes(x = Game_No, y = Value, colour = TeamName, linetype = Measure,
+                 group = interaction(TeamName, Measure))) +
+  geom_step(linewidth = 0.8) +
+  geom_point(data = race %>% filter(Measure == "Goals"), size = 1.4) +
+  scale_colour_manual(values = team_cols, name = NULL) +
+  scale_linetype_manual(values = c(Goals = "solid", xG = "dashed"), name = NULL) +
+  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
+  labs(title = "Season Goals vs xG (cumulative)",
+       subtitle = paste0(Season_Label, " | solid = goals, dashed = xG; above the dashed line = scoring/conceding more than expected"),
+       x = NULL, y = "Cumulative", caption = My_caption) +
+  line_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+```{r}
+#| title: PPDA by Game
+#| label: trend ppda by game
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+ggplot(game_stats, aes(x = Game_No, y = PPDA, colour = TeamName, group = TeamName)) +
+  geom_point(size = 1.8, alpha = 0.6) +
+  geom_line(aes(y = PPDA_roll3), linewidth = 0.9) +
+  geom_hline(yintercept = HomePPDA, colour = Color_Home, linetype = "dotted") +
+  scale_colour_manual(values = team_cols, name = NULL) +
+  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(title = "PPDA by Game (lower = more pressing)",
+       subtitle = paste0(Season_Label, " | dots = each game, line = 3-game rolling, dotted = ", Match_Home, " season PPDA ", HomePPDA),
+       x = NULL, y = "PPDA (standard)", caption = My_caption) +
+  line_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+## Row
+
+```{r}
+#| title: Field Tilt and Possession by Game
+#| label: trend tilt by game
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+tilt <- game_stats %>%
+  filter(TeamName == Match_Home) %>%
+  select(Game_No, `Field tilt %`, `Possession %`) %>%
+  pivot_longer(-Game_No, names_to = "Measure", values_to = "Value")
+
+ggplot(tilt, aes(x = Game_No, y = Value, linetype = Measure)) +
+  geom_hline(yintercept = 50, colour = "grey60", linewidth = 0.3) +
+  geom_line(colour = Color_Home, linewidth = 0.8) +
+  geom_point(colour = Color_Home, size = 1.6) +
+  scale_linetype_manual(values = c(`Field tilt %` = "solid", `Possession %` = "dashed"), name = NULL) +
+  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20)) +
+  labs(title = paste0(Match_Home, " Field Tilt and Possession by Game"),
+       subtitle = paste0(Season_Label, " | share of final-third touches (solid) and of all touches (dashed)"),
+       x = NULL, y = "%", caption = My_caption) +
+  line_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+```{r}
+#| title: Threat (EPV) by Game
+#| label: trend epv by game
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+ggplot(game_stats, aes(x = Game_No, y = EPV, colour = TeamName, group = TeamName)) +
+  geom_point(size = 1.8, alpha = 0.6) +
+  geom_line(aes(y = EPV_roll3), linewidth = 0.9) +
+  scale_colour_manual(values = team_cols, name = NULL) +
+  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
+  labs(title = "Threat Created (EPV) by Game",
+       subtitle = paste0(Season_Label, " | dots = each game, line = 3-game rolling"),
+       x = NULL, y = "EPV (successful actions)", caption = My_caption) +
+  line_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+## Row
+
+```{r}
+#| title: Recent Form vs Season
+#| label: trend form dumbbell
+#| fig-width: 6
+#| fig-height: 4.6
+#| fig-dpi: 200
+
+fc <- form_compare %>%
+  mutate(pct = ifelse(Season != 0, 100 * (Recent - Season) / abs(Season), 0),
+         lab = ifelse(abs(Recent) >= 10, format(round(Recent, 1), nsmall = 1), format(round(Recent, 2), nsmall = 2)),
+         Metric = factor(Metric, levels = rev(kpi_names)))
+ggplot(fc, aes(y = Metric)) +
+  geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.3) +
+  geom_segment(aes(x = 0, xend = pct, yend = Metric, colour = Better), linewidth = 1.1) +
+  geom_point(aes(x = pct, colour = Better), size = 2.6) +
+  geom_text(aes(x = pct, label = lab, hjust = ifelse(pct >= 0, -0.35, 1.35)), size = 2.2) +
+  scale_colour_manual(values = c(`TRUE` = col_success, `FALSE` = col_fail),
+                      labels = c(`TRUE` = "Better than season", `FALSE` = "Worse than season"), name = NULL) +
+  scale_x_continuous(expand = expansion(mult = 0.25), labels = function(v) paste0(v, "%")) +
+  facet_grid(Group ~ ., scales = "free_y", space = "free_y") +
+  labs(title = paste0(Match_Home, ": Last ", min(form_n, nrow(game_kpis)), " Games vs Season Average"),
+       subtitle = paste0(Season_Label, " | % change of the recent per-game average from the season average; label = recent value"),
+       x = "Change vs season average", y = NULL, caption = My_caption) +
+  line_theme(legend_position = "bottom") +
+  theme(strip.text = element_text(face = "bold", size = 7, colour = Color_Home_Text),
+        strip.background = element_rect(fill = Color_Home, colour = "black"))
+```
+
+```{r}
+#| title: Home vs Away
+#| label: trend home away table
+
+ai_gt(venue_table, paste0(Match_Home, " - Home vs Away (per game)"), rowname = "Metric") %>%
+  tab_style(style = list(cell_text(weight = "bold", color = Color_Home_Text), cell_fill(color = Color_Home)),
+            locations = cells_column_labels()) %>%
+  tab_footnote("Per-game averages; points per game counts every competition as 3 for a win and 1 for a draw. PPDA = standard definition.")
+```
+
+## Row
+
+```{r}
+#| title: Game by Game
+#| label: trend table
+
+ai_gt(trend_table, "Game by Game", rowname = "Game_No") %>%
+  gt_team_spanners() %>%
+  cols_label(Match_day = "MD") %>%
+  fmt_number(columns = matches("xG|xGOT|EPV|PPDA"), decimals = 2) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Home, " | xG")), palette = team_scale(Match_Home),
+                domain = c(0, max(game_stats$xG, 1))) %>%
+  gt_color_rows(columns = all_of(paste0(Match_Away, " | xG")), palette = team_scale(Match_Away),
+                domain = c(0, max(game_stats$xG, 1))) %>%
+  tab_footnote("Goals include own goals for the team that benefited. PPDA = standard definition (opponent passes in their own 60% per defensive action in that zone).")
+```
+
+
 # Season Summary
 
 ```{r}
@@ -4126,213 +4335,6 @@ custom_colors <- c(Match_Home = Color_Home, "Match Drawn" = "gray", Match_Away =
 
 ```
 
-# Season Trends
-
-## Row {height="130px"}
-
-```{r}
-#| content: valuebox
-#| title: Record
-list(icon = "trophy", color = "primary",
-     value = paste0(sum(games$Result == "W"), "W ", sum(games$Result == "D"), "D ", sum(games$Result == "L"), "L"))
-```
-
-```{r}
-#| content: valuebox
-#| title: Goals (for - against)
-list(icon = "dribbble", color = "primary", value = paste0(sum(games$GF), " - ", sum(games$GA)))
-```
-
-```{r}
-#| content: valuebox
-#| title: xG (for - against)
-list(icon = "bullseye", color = "primary",
-     value = paste0(f2(sum(game_stats$xG[game_stats$TeamName == Match_Home])), " - ",
-                    f2(sum(game_stats$xG[game_stats$TeamName == Match_Away]))))
-```
-
-```{r}
-#| content: valuebox
-#| title: PPDA (standard, season)
-list(icon = "shield", color = "primary", value = paste0(HomePPDA, " / ", AwayPPDA))
-```
-
-## Row
-
-```{r}
-#| title: xG For and Against by Game
-#| label: trend xg by game
-#| fig-width: 10
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-ggplot(game_stats, aes(x = Game_Label, y = xG, fill = TeamName)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.75, colour = "#454545", linewidth = 0.2, alpha = 0.85) +
-  geom_line(aes(y = xG_roll3, colour = TeamName, group = TeamName), linewidth = 0.8) +
-  geom_point(aes(y = Goals, group = TeamName), position = position_dodge(width = 0.8),
-             shape = 21, fill = "white", colour = "black", size = 2) +
-  scale_fill_manual(values = team_cols, name = NULL) +
-  scale_colour_manual(values = team_cols, guide = "none") +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(title = "xG For and Against by Game",
-       subtitle = paste0(Season_Label, " | bars = xG, white dots = goals, line = 3-game rolling xG"),
-       x = NULL, y = "xG / Goals", caption = My_caption) +
-  line_theme() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
-```
-
-## Row
-
-```{r}
-#| title: Goals vs xG Race
-#| label: trend goals vs xg race
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-race <- game_stats %>%
-  select(TeamName, Game_No, Game_Label, `Goals` = Cum_Goals, `xG` = Cum_xG) %>%
-  pivot_longer(c(Goals, xG), names_to = "Measure", values_to = "Value") %>%
-  mutate(Series = paste0(ifelse(TeamName == Match_Home, "For", "Against"), " - ", Measure))
-
-ggplot(race, aes(x = Game_No, y = Value, colour = TeamName, linetype = Measure,
-                 group = interaction(TeamName, Measure))) +
-  geom_step(linewidth = 0.8) +
-  geom_point(data = race %>% filter(Measure == "Goals"), size = 1.4) +
-  scale_colour_manual(values = team_cols, name = NULL) +
-  scale_linetype_manual(values = c(Goals = "solid", xG = "dashed"), name = NULL) +
-  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
-  labs(title = "Season Goals vs xG (cumulative)",
-       subtitle = paste0(Season_Label, " | solid = goals, dashed = xG; above the dashed line = scoring/conceding more than expected"),
-       x = NULL, y = "Cumulative", caption = My_caption) +
-  line_theme() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
-```
-
-```{r}
-#| title: PPDA by Game
-#| label: trend ppda by game
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-ggplot(game_stats, aes(x = Game_No, y = PPDA, colour = TeamName, group = TeamName)) +
-  geom_point(size = 1.8, alpha = 0.6) +
-  geom_line(aes(y = PPDA_roll3), linewidth = 0.9) +
-  geom_hline(yintercept = HomePPDA, colour = Color_Home, linetype = "dotted") +
-  scale_colour_manual(values = team_cols, name = NULL) +
-  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
-  scale_y_continuous(limits = c(0, NA)) +
-  labs(title = "PPDA by Game (lower = more pressing)",
-       subtitle = paste0(Season_Label, " | dots = each game, line = 3-game rolling, dotted = ", Match_Home, " season PPDA ", HomePPDA),
-       x = NULL, y = "PPDA (standard)", caption = My_caption) +
-  line_theme() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
-```
-
-## Row
-
-```{r}
-#| title: Field Tilt and Possession by Game
-#| label: trend tilt by game
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-tilt <- game_stats %>%
-  filter(TeamName == Match_Home) %>%
-  select(Game_No, `Field tilt %`, `Possession %`) %>%
-  pivot_longer(-Game_No, names_to = "Measure", values_to = "Value")
-
-ggplot(tilt, aes(x = Game_No, y = Value, linetype = Measure)) +
-  geom_hline(yintercept = 50, colour = "grey60", linewidth = 0.3) +
-  geom_line(colour = Color_Home, linewidth = 0.8) +
-  geom_point(colour = Color_Home, size = 1.6) +
-  scale_linetype_manual(values = c(`Field tilt %` = "solid", `Possession %` = "dashed"), name = NULL) +
-  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
-  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20)) +
-  labs(title = paste0(Match_Home, " Field Tilt and Possession by Game"),
-       subtitle = paste0(Season_Label, " | share of final-third touches (solid) and of all touches (dashed)"),
-       x = NULL, y = "%", caption = My_caption) +
-  line_theme() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
-```
-
-```{r}
-#| title: Threat (EPV) by Game
-#| label: trend epv by game
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-ggplot(game_stats, aes(x = Game_No, y = EPV, colour = TeamName, group = TeamName)) +
-  geom_point(size = 1.8, alpha = 0.6) +
-  geom_line(aes(y = EPV_roll3), linewidth = 0.9) +
-  scale_colour_manual(values = team_cols, name = NULL) +
-  scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
-  labs(title = "Threat Created (EPV) by Game",
-       subtitle = paste0(Season_Label, " | dots = each game, line = 3-game rolling"),
-       x = NULL, y = "EPV (successful actions)", caption = My_caption) +
-  line_theme() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
-```
-
-## Row
-
-```{r}
-#| title: Recent Form vs Season
-#| label: trend form dumbbell
-#| fig-width: 6
-#| fig-height: 4.6
-#| fig-dpi: 200
-
-fc <- form_compare %>%
-  mutate(pct = ifelse(Season != 0, 100 * (Recent - Season) / abs(Season), 0),
-         lab = ifelse(abs(Recent) >= 10, format(round(Recent, 1), nsmall = 1), format(round(Recent, 2), nsmall = 2)),
-         Metric = factor(Metric, levels = rev(kpi_names)))
-ggplot(fc, aes(y = Metric)) +
-  geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.3) +
-  geom_segment(aes(x = 0, xend = pct, yend = Metric, colour = Better), linewidth = 1.1) +
-  geom_point(aes(x = pct, colour = Better), size = 2.6) +
-  geom_text(aes(x = pct, label = lab, hjust = ifelse(pct >= 0, -0.35, 1.35)), size = 2.2) +
-  scale_colour_manual(values = c(`TRUE` = col_success, `FALSE` = col_fail),
-                      labels = c(`TRUE` = "Better than season", `FALSE` = "Worse than season"), name = NULL) +
-  scale_x_continuous(expand = expansion(mult = 0.25), labels = function(v) paste0(v, "%")) +
-  facet_grid(Group ~ ., scales = "free_y", space = "free_y") +
-  labs(title = paste0(Match_Home, ": Last ", min(form_n, nrow(game_kpis)), " Games vs Season Average"),
-       subtitle = paste0(Season_Label, " | % change of the recent per-game average from the season average; label = recent value"),
-       x = "Change vs season average", y = NULL, caption = My_caption) +
-  line_theme(legend_position = "bottom") +
-  theme(strip.text = element_text(face = "bold", size = 7, colour = Color_Home_Text),
-        strip.background = element_rect(fill = Color_Home, colour = "black"))
-```
-
-```{r}
-#| title: Home vs Away
-#| label: trend home away table
-
-ai_gt(venue_table, paste0(Match_Home, " - Home vs Away (per game)"), rowname = "Metric") %>%
-  tab_style(style = list(cell_text(weight = "bold", color = Color_Home_Text), cell_fill(color = Color_Home)),
-            locations = cells_column_labels()) %>%
-  tab_footnote("Per-game averages; points per game counts every competition as 3 for a win and 1 for a draw. PPDA = standard definition.")
-```
-
-## Row
-
-```{r}
-#| title: Game by Game
-#| label: trend table
-
-ai_gt(trend_table, "Game by Game", rowname = "Game_No") %>%
-  gt_team_spanners() %>%
-  cols_label(Match_day = "MD") %>%
-  fmt_number(columns = matches("xG|xGOT|EPV|PPDA"), decimals = 2) %>%
-  gt_color_rows(columns = all_of(paste0(Match_Home, " | xG")), palette = team_scale(Match_Home),
-                domain = c(0, max(game_stats$xG, 1))) %>%
-  gt_color_rows(columns = all_of(paste0(Match_Away, " | xG")), palette = team_scale(Match_Away),
-                domain = c(0, max(game_stats$xG, 1))) %>%
-  tab_footnote("Goals include own goals for the team that benefited. PPDA = standard definition (opponent passes in their own 60% per defensive action in that zone).")
-```
 
 # Passing Analysis
 
@@ -5354,8 +5356,6 @@ Oppo_Passing_Chains_Table_all
 
 ```
 
-# Set Pieces and Entries
-
 ## Set Pieces
 ```{r}
 #| title: Set-Piece Summary
@@ -6310,7 +6310,7 @@ HometouchPlot1Sub
 state_selector("ss-player-analysis-5", setup = page_setup_player_analysis, width = 7, height = 5)
 ```
 
-# EPV Analysis
+# Threat Analysis
 
 ```{r}
 #| include: false
@@ -7103,7 +7103,7 @@ HomeDefEPVTable_Final
 state_selector("ss-epv-analysis-5", setup = page_setup_epv_analysis, width = 7, height = 5)
 ```
 
-# PPDA Analysis
+# Off Ball Analysis
 
 ```{r}
 #| include: false
@@ -7802,8 +7802,6 @@ AwayPostPPDAHeatMapplotFT
 state_selector("ss-ppda-analysis-6", setup = page_setup_ppda_analysis, width = 7, height = 5)
 ```
 
-# Transitions and Shape
-
 ## PPDA (Standard Definition)
 ```{r}
 #| title: PPDA Table
@@ -8039,7 +8037,7 @@ plot_block(Match_Home)
 plot_block(Match_Away)
 ```
 
-# xG Analysis
+# Shot Analysis
 
 ```{r}
 #| include: false
@@ -8577,23 +8575,10 @@ xGSituationBarOppo_I
 state_selector("ss-xg-analysis-6", setup = page_setup_xg_analysis, width = 7, height = 5)
 ```
 
-# Shot Analysis
-
 ```{r}
 #| include: false
 # setup chunks re-run for each game state by state_selector()
 page_setup_shot_analysis <- c()
-```
-
-## Row
-```{r}
-#| content: valuebox
-#| title: "Game state - use the buttons on each chart: All, Winning, Drawing, Losing, Garbage Time"
-
-list(
-  icon = "calendar-date",
-  color = "primary",
-  value = "All Games")
 ```
 
 ## Row {.flow}
