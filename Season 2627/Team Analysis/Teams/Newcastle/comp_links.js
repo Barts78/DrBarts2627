@@ -1,1 +1,0 @@
-window.UP_COMP_LINKS = [{"label":"Premier League","href":"Newcastle_2627_Team_Dashboard.html"},{"label":"League Cup","href":"Newcastle_2627_Team_Dashboard_LC.html"},{"label":"All competitions","href":"Newcastle_2627_Team_Dashboard_All.html"}];
