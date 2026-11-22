@@ -100,7 +100,7 @@ section_thumbs <- c(
 
 section_descriptions <- c(
   "Season Trends" =
-    "Explore season-wide trends, team performance and league analysis.",
+    "Pick a Premier League club: season trends, league context, passing, threat, pressing and shots, by competition.",
 
   "Match Previews" =
     "Match-by-match previews, opposition analysis and key performance indicators.",
@@ -130,6 +130,11 @@ find_target <- function(section) {
   # ---- SEASON TRENDS: direct dashboard link ----
 
   if (section == "Season Trends") {
+
+    # the club pages (Teams/): pick a club, then its season dashboard
+    if (dir.exists(file.path(base_dir, "Teams"))) {
+      return("Teams/index.html")
+    }
 
     docs_dir <- file.path(section_path, "docs")
 

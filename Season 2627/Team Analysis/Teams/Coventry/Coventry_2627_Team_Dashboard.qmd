@@ -4,6 +4,8 @@ params:
   team: "Coventry"
   database: "EPLComp_LFC_Games_2627"
   competition: "Premier League"
+  league_database: "EPLComp_LFC_Games_2627"
+  league_competition: "Premier League"
   season: "2627"
 author: "Dr Phil Barter"
 format: 
@@ -33,7 +35,33 @@ format:
           .method-card .card-body p, .method-card .card-body li,
           .method-card .card-body strong, .method-card .card-body code {
             color: #1A1A1A !important; }
+          /* competition switcher (filled from comp_links.js, written by render_team_dashboards.R) */
+          /* tabs: keep every page name on one line so they all fit */
+          .navbar .navbar-nav .nav-link { white-space:nowrap; padding-left:.6rem !important; padding-right:.6rem !important; font-size:.95rem; }
+          .navbar-title { white-space:nowrap; }
+          select.up-comp { margin-left:1rem; font-size:.85rem; padding:.15rem .5rem; border-radius:6px;
+            border:1px solid rgba(255,255,255,.6); background:#FFFFFF; color:#1A1A1A; max-width:13rem; }
           </style>
+          <script src="comp_links.js"></script>
+          <script>
+          document.addEventListener('DOMContentLoaded', function () {
+            var L = window.UP_COMP_LINKS || [];
+            if (L.length < 2) return;
+            var here = decodeURIComponent(location.pathname.split('/').pop());
+            var s = document.createElement('select');
+            s.className = 'up-comp'; s.title = 'Competition';
+            L.forEach(function (l) {
+              var o = document.createElement('option');
+              o.value = l.href; o.textContent = l.label;
+              if (l.href === here) o.selected = true;
+              s.appendChild(o);
+            });
+            s.addEventListener('change', function () { location.href = encodeURI(s.value) + location.hash; });
+            var t = document.querySelector('.navbar-brand-container') || document.querySelector('.navbar-brand') ||
+                    document.querySelector('.navbar .container-fluid');
+            if (t) t.appendChild(s);
+          });
+          </script>
 ---
 
 ```{r}
@@ -1136,7 +1164,7 @@ plot_passnet_AI <- function(data, team_name, scale_stat = "EPV",
               glue("<span style='font-family:\"Arial\";color:{scale_color};font-size:14px;'>{team_name}</span><span style='color:gray12;font-size:14px;'> Pass Network</span>"))
   
   PassNetTitle_textD <- paste0(
-              glue("<span style='font-family:\"Arial Bold\";color:{scale_color};font-size:14px;'>{team_name}</span><span style='color:gray12;font-size:14px;'> Pass Network & </span><span style='font-family:\"Arial\";color:gray12;font-size:14px;'>Duels (</span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:14px;'>Unsuccessful</span><span style='color:gray12;font-size:14px;'> and </span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:14px;'>Successful</span><span style='color:gray12;font-size:14px;'>)</span>"))
+              glue("<span style='font-family:\"Arial Bold\";color:{scale_color};font-size:14px;'>{team_name}</span><span style='color:gray12;font-size:14px;'> Pass Network & </span><span style='font-family:\"Arial\";color:gray12;font-size:14px;'>Duels (</span><span style='font-family:\"Arial Bold\";color:grey60;font-size:14px;'>Unsuccessful</span><span style='color:gray12;font-size:14px;'> and </span><span style='font-family:\"Arial Bold\";color:{scale_color};font-size:14px;'>Successful</span><span style='color:gray12;font-size:14px;'>)</span>"))
   
     # wrap or not
     if (wrap == "Yes") {
@@ -1240,7 +1268,7 @@ nodes <- nodes %>%
         
         scale_size_continuous(range = c(0.5, 3)) +
         
-        scale_fill_manual(values = c("#0000FF",  "red2"))
+        scale_fill_manual(values = c(scale_color, "grey60"))
       
       if (pressmap == "Yes") {
         
@@ -1441,7 +1469,7 @@ nodes <- nodes %>%
       geom_text(aes(y = 28.95, x = 74.7, label = "RHS"), size = 2, color = "grey", show.legend = FALSE) +
       
       #set scale and color gradient
-      scale_fill_manual(values = c("#0000FF",  "red2"), labels = c("Won", "Lost"), name = "")
+      scale_fill_manual(values = c(scale_color, "grey60"), labels = c("Won", "Lost"), name = "")
 
       
     if (pressmap == "Yes") {
@@ -1677,6 +1705,12 @@ team_alias <- c("Manchester United" = "Man Utd", "Manchester City" = "Man City",
 normalise_team <- function(v) { v <- as.character(v); hit <- v %in% names(team_alias); v[hit] <- team_alias[v[hit]]; v }
 SeasonDB$TeamName <- normalise_team(SeasonDB$TeamName)
 for (nm in names(team_alias)) SeasonDB$game_name <- gsub(nm, team_alias[[nm]], SeasonDB$game_name, fixed = TRUE)
+dup_games <- tapply(SeasonDB$Game_date, SeasonDB$game_name, function(d) length(unique(d)) > 1)
+dup_games <- names(dup_games)[dup_games]
+if (length(dup_games)) {
+  hit <- SeasonDB$game_name %in% dup_games
+  SeasonDB$game_name[hit] <- paste0(SeasonDB$game_name[hit], " (", SeasonDB$Game_date[hit], ")")
+}
 Match_Home <- normalise_team(Match_Home)
 if (!Match_Home %in% SeasonDB$TeamName) stop("No games for '", Match_Home, "' in ", GameName)
 
@@ -1718,10 +1752,10 @@ classic_pal  <- c(red = "ggthemes::Classic Red", orange = "ggthemes::Classic Ora
                   blue = "ggthemes::Classic Blue", purple = "ggthemes::Purple", grey = "ggthemes::Classic Gray")
 
 #set home / away color scales
-ColorScale_Home  <- material_pal[[colour_family(Color_Home)]]
-ColorScale_Away  <- material_pal[[colour_family(Color_Away)]]
-ColorScale_HomeC <- classic_pal[[colour_family(Color_Home)]]
-ColorScale_AwayC <- classic_pal[[colour_family(Color_Away)]]
+ColorScale_Home  <- c("#FFFAFA", Color_Home)     # table shading: white to the team colour
+ColorScale_Away  <- c("#FFFAFA", Color_Away)
+ColorScale_HomeC <- c("#FFFAFA", Color_Home)     # heat maps
+ColorScale_AwayC <- c("#FFFAFA", Color_Away)
 
 #game blocks (Game_date1, Game_date2, ...) are worked out from the data after
 #loading: a new block starts after any gap of 11+ days (international breaks)
@@ -1768,18 +1802,18 @@ AwayxGlineTitle_text <- paste0(
 
 #set dribbles title
 DribblesTitle_text <- paste0(
-              glue("<span style='font-family:\"Arial\";color:gray12;font-size:16px;'>Dribbles (</span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Unsuccessful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'>),</span>"))
+              glue("<span style='font-family:\"Arial\";color:gray12;font-size:16px;'>Dribbles (</span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Unsuccessful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:grey50;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'>),</span>"))
 
 #set duels title
 DuelsTitle_text <- paste0(
-              glue("<span style='font-family:\"Arial\";color:gray12;font-size:16px;'>Duels (</span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Unsuccessful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'>),</span>"))
+              glue("<span style='font-family:\"Arial\";color:gray12;font-size:16px;'>Duels (</span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Unsuccessful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:grey50;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'>),</span>"))
 
 #set PPs title
 PPsTitle_text <- paste0(
-              glue("<span style='font-family:\"Arial Bold\";color:{Color_Home};font-size:16px;'>{Match_Home}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Passes (</span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Game Period,</span>"))
+              glue("<span style='font-family:\"Arial Bold\";color:{Color_Home};font-size:16px;'>{Match_Home}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Passes (</span><span style='font-family:\"Arial Bold\";color:grey50;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Game Period,</span>"))
 
 AwayPPsTitle_text <- paste0(
-              glue("<span style='font-family:\"Arial Bold\";color:{Color_Away};font-size:16px;'>{Match_Away}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Passes (</span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Game Period,</span>"))
+              glue("<span style='font-family:\"Arial Bold\";color:{Color_Away};font-size:16px;'>{Match_Away}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Passes (</span><span style='font-family:\"Arial Bold\";color:grey50;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Game Period,</span>"))
 
 
 ##new socials
@@ -1851,13 +1885,23 @@ My_caption <- paste0(my_socials)
 # (WhoScored names) rather than FotMob's homeTeam/awayTeam spellings
 
 # ---- league context: every club, from the whole league database ----------
+# (the League page always shows the league, whichever competition this file is for)
+League_Name <- as.character(params$league_competition)
+LeagueDB <- if (identical(as.character(params$league_database), GameName)) SeasonDB else {
+  lf <- file.path(data_root, "Data Sets/WhoScored/Databases", paste0(params$league_database, ".parquet"))
+  ld <- if (file.exists(lf)) as.data.frame(arrow::read_parquet(lf)) else
+    read_xlsx(sub("\\.parquet$", ".xlsx", lf), guess_max = 100000)
+  ld$TeamName <- normalise_team(ld$TeamName)
+  for (nm in names(team_alias)) ld$game_name <- gsub(nm, team_alias[[nm]], ld$game_name, fixed = TRUE)
+  ld
+}
 # worked out before the database is cut down to the focus club's games.
 # Same definitions as the rest of the dashboard: goals include own goals for
 # the team that benefits, shots exclude own goals, PPDA is the standard one.
 lcol <- function(df, col, na = 0) {
   if (col %in% names(df)) coalesce(suppressWarnings(as.numeric(df[[col]])), na) else rep(na, nrow(df))
 }
-lg <- SeasonDB %>% filter(lcol(SeasonDB, "period") < 5, !is.na(TeamName))
+lg <- LeagueDB %>% filter(lcol(LeagueDB, "period") < 5, !is.na(TeamName))
 lg <- tibble(
   game_name = lg$game_name, TeamName = lg$TeamName, Game_date = as.character(lg$Game_date),
   hp = lcol(lg, "Home_Passes"), hg = lcol(lg, "Home_Goals"), ag = lcol(lg, "Away_Goals"),
@@ -1955,13 +1999,14 @@ focus_rank <- function(m) league_long$Rank[league_long$Focus & league_long$Metri
 ordinal <- function(n) paste0(n, ifelse(n %% 100 %in% 11:13, "th", c("th", "st", "nd", "rd", rep("th", 6))[n %% 10 + 1]))
 league_focus <- league_table %>% filter(Team == Match_Home)
 message(Match_Home, ": ", ordinal(league_focus$Pos), " of ", n_league_teams, " (", league_focus$Pts, " pts)")
-rm(lg, lg_tg, lg_goals, lg_home)
+rm(lg, lg_tg, lg_goals, lg_home, LeagueDB)
 
 plottingData <- SeasonDB %>%
   group_by(game_name) %>%
   filter(any(TeamName == Match_Home)) %>%
   ungroup()
 rm(SeasonDB)
+if (n_distinct(plottingData$game_name) < 6) knitr::opts_chunk$set(error = TRUE)
 
 #focus team vs all opponents
 plottingData <- plottingData %>%
@@ -2183,8 +2228,8 @@ team_col   <- function(team) ifelse(team == Match_Home, Color_Home, Color_Away)
 team_txt   <- function(team) ifelse(team == Match_Home, Color_Home_Text, Color_Away_Text)
 team_cols  <- setNames(c(Color_Home, Color_Away), c(Match_Home, Match_Away))
 team_scale <- function(team) c("#FFFAFA", team_col(team))
-col_success <- "#0000FF"
-col_fail    <- "#BD1100"
+col_success <- Color_Home      # successful / better
+col_fail    <- "#9E9E9E"      # unsuccessful / worse
 team_strip <- function(team) {
   theme(strip.text = element_text(face = "bold", size = 8, colour = team_txt(team)),
         strip.background = element_rect(fill = team_col(team), color = "black", linetype = "solid", linewidth = 1))
@@ -2202,7 +2247,7 @@ quarter_levels <- c("1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter", 
 
 # season subtitle used on the new plots and tables
 last_game_date <- max(game_dates$.date, na.rm = TRUE)
-Season_Label <- paste0(Match_Home, " | ", n_games, " games to ", format(last_game_date, "%d-%m-%Y"))
+Season_Label <- paste0(Match_Home, " | ", Competition, " | ", n_games, " games to ", format(last_game_date, "%d-%m-%Y"))
 
 gt_caption <- "X @Barts78 | Bluesky @barts78 | Mastodon @DrBarts | GitHub Barts78 | LinkedIn Phil-barter | Data: Opta"
 
@@ -2877,7 +2922,7 @@ venue_table <- game_kpis %>%
   select(Metric, any_of(c("Home", "Away")))
 ```
 
-# Season Trends
+# Trends
 
 ## Row {height="130px"}
 
@@ -3091,7 +3136,7 @@ ai_gt(trend_table, "Game by Game", rowname = "Game_No") %>%
 ```{r}
 #| include: false
 # league page helpers (not filtered by game state: the league view is the whole season)
-League_Label <- paste0(Competition, " | all ", n_league_teams, " clubs, games to ",
+League_Label <- paste0(League_Name, " | all ", n_league_teams, " clubs, games to ",
                        format(max(league_table$Last_Game, na.rm = TRUE), "%d-%m-%Y"))
 league_scatter <- function(df, xvar, yvar, title, subtitle, xlab, ylab,
                            reverse_x = FALSE, reverse_y = FALSE, diagonal = FALSE) {
@@ -3156,7 +3201,7 @@ lt <- league_table %>%
   transmute(Pos, Team, P, W, D, L, GF, GA, GD, Pts, xPts, xG, xGA, xGD,
             `Poss %` = `Possession %`, `Tilt %` = `Field tilt %`, PPDA)
 focus_row <- which(lt$Team == Match_Home)
-ai_gt(lt, paste0(Competition, " Table"), subtitle = League_Label) %>%
+ai_gt(lt, paste0(League_Name, " Table"), subtitle = League_Label) %>%
   cols_align(align = "left", columns = Team) %>%
   fmt_number(columns = c(xPts, xG, xGA, xGD, `Poss %`, `Tilt %`, PPDA), decimals = 1) %>%
   fmt_number(columns = c(GD), decimals = 0, force_sign = TRUE) %>%
@@ -3164,7 +3209,7 @@ ai_gt(lt, paste0(Competition, " Table"), subtitle = League_Label) %>%
   tab_spanner("Results", columns = c(P, W, D, L, GF, GA, GD, Pts)) %>%
   tab_spanner("Expected", columns = c(xPts, xG, xGA, xGD)) %>%
   tab_spanner("Style", columns = c(`Poss %`, `Tilt %`, PPDA)) %>%
-  data_color(columns = xGD, method = "numeric", palette = c("#BD1100", "#FFFAFA", "#0000FF"),
+  data_color(columns = xGD, method = "numeric", palette = c("#8C8C8C", "#FFFAFA", Color_Home),
              domain = c(-1, 1) * max(abs(lt$xGD), 0.1)) %>%
   tab_style(style = cell_text(weight = "bold"), locations = cells_body(columns = Pts)) %>%
   tab_style(style = list(cell_fill(color = Color_Home), cell_text(color = Color_Home_Text, weight = "bold")),
@@ -3260,7 +3305,7 @@ league_scatter(league_table %>% mutate(`Goals - xG` = GF - xG, `xGA - Goals agai
                "Goals minus xG", "xG against minus goals against")
 ```
 
-# Season Summary
+# Summary
 
 ```{r}
 #| include: false
@@ -4653,7 +4698,7 @@ custom_colors <- c(Match_Home = Color_Home, "Match Drawn" = "gray", Match_Away =
 ```
 
 
-# Passing Analysis
+# Passing
 
 ```{r}
 #| include: false
@@ -5260,7 +5305,7 @@ Zone14_HS_Passes_LFC_Plot <- Z14_HS_Passes_LFC_Data %>%
     linewidth = 0.25) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Home),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
@@ -5319,7 +5364,7 @@ Zone14_HS_Passes_Oppo_Plot <- Z14_HS_Passes_Oppo_Data %>%
     linewidth = 0.25) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Away),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
@@ -5455,10 +5500,10 @@ mutate(Cross_Passes = if_else(is.na(Cross_Passes), 0, Cross_Passes)) %>%
 
 #set LPs title
 LPsTitle_text <- paste0(
-              glue("<span style='font-family:\"Arial Bold\";color:{Color_Home};font-size:16px;'>{Match_Home}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Long Passes & Crosses (</span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Half,</span>"))
+              glue("<span style='font-family:\"Arial Bold\";color:{Color_Home};font-size:16px;'>{Match_Home}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Long Passes & Crosses (</span><span style='font-family:\"Arial Bold\";color:grey50;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:{Color_Home};font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Half,</span>"))
 
 AwayLPsTitle_text <- paste0(
-              glue("<span style='font-family:\"Arial Bold\";color:{Color_Away};font-size:16px;'>{Match_Away}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Long Passes & Crosses (</span><span style='font-family:\"Arial Bold\";color:#0000FF;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:#BD1100;font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Half,</span>"))
+              glue("<span style='font-family:\"Arial Bold\";color:{Color_Away};font-size:16px;'>{Match_Away}</span><span style='font-family:\"Arial\";color:gray12;font-size:16px;'> Long Passes & Crosses (</span><span style='font-family:\"Arial Bold\";color:grey50;font-size:16px;'>Successful</span><span style='color:gray12;font-size:16px;'> and </span><span style='font-family:\"Arial Bold\";color:{Color_Away};font-size:16px;'>Progressive</span><span style='color:gray12;font-size:16px;'>) by Half,</span>"))
 
 
 Long_Passes_Home_Plot <- Long_Passes_Data %>%
@@ -5491,7 +5536,7 @@ Long_Passes_Home_Plot <- Long_Passes_Data %>%
     linewidth = 0.15) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Home),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
@@ -5557,7 +5602,7 @@ Long_Passes_Away_Plot <- Long_Passes_Data %>%
     linewidth = 0.15) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Away),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
@@ -5939,7 +5984,7 @@ plot_entry_density(Match_Away, "box_entry", "Box Entries")
 plot_entry_density(Match_Away, "ft_entry", "Final-Third Entries")
 ```
 
-# Player Analysis
+# Players
 
 ```{r}
 #| include: false
@@ -6627,7 +6672,7 @@ HometouchPlot1Sub
 state_selector("ss-player-analysis-5", setup = page_setup_player_analysis, width = 7, height = 5)
 ```
 
-# Threat Analysis
+# Threat
 
 ```{r}
 #| include: false
@@ -6810,7 +6855,7 @@ EPVMapplotFT <- ggplot(average_epvFT, aes(x = zone_x, y = zone_y, fill = avg_epv
   #geometrics
   geom_tile() +
   geom_text(aes(label = PEPV, size = 3)) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
 
   #formatting
   labs(title = paste0(Match_Home," Open Play EPV Heat Map - Full Game"), 
@@ -6973,9 +7018,9 @@ EPVHeatMapplotFT <- EPVHeatMapDataFT %>%
   geom_text(data = average_epvNZFT, aes(x = x, y = y, label = paste(PEPV, "%")), size = 5) +
 
    #scale_fill_paletteer_d(ColorScale_Home) +
-   scale_color_paletteer_d(ColorScale_Home) +
-#  scale_color_paletteer_c(ColorScale_HomeC) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+   scale_colour_gradientn(colours = ColorScale_Home) +
+#  scale_colour_gradientn(colours = ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   
   #formatting
   labs(title = paste0(Match_Home," Open Play EPV Heat Map"), 
@@ -7026,8 +7071,8 @@ OppoEPVHeatMapplotFT <- OppoEPVHeatMapDataFT %>%
   geom_text(data = Oppoaverage_epvNZFT, aes(x = x, y = y, label = paste(PEPV, "%")), size = 5) +
 
   
-  scale_fill_paletteer_c(ColorScale_AwayC) +
-  scale_color_paletteer_d(ColorScale_Away) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
+  scale_colour_gradientn(colours = ColorScale_Away) +
   
   #formatting
   labs(title = paste(Match_Away," Open Play EPV Heat Map"), 
@@ -7181,7 +7226,7 @@ EPVHeatMapplotFTW <- EPVHeatMapDataFTW %>%
   
   #geometrics
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.4, adjust = 0.5, linewidth = 0.5) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   
   #wrap
   facet_wrap(~Game_Period, ncol = 4) +
@@ -7233,7 +7278,7 @@ OppoEPVHeatMapplotFTW <- OppoEPVHeatMapDataFTW %>%
   
   #geometrics
   stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.4, adjust = 0.5, linewidth = 0.5) +
-  scale_fill_paletteer_c(ColorScale_AwayC) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
   
   #wrap
   facet_wrap(~Game_Period, ncol = 4) +
@@ -7420,7 +7465,7 @@ HomeDefEPVTable_Final
 state_selector("ss-epv-analysis-5", setup = page_setup_epv_analysis, width = 7, height = 5)
 ```
 
-# Off Ball Analysis
+# Off Ball
 
 ```{r}
 #| include: false
@@ -7476,7 +7521,7 @@ PPDAMapplotFT <- ggplot(average_PPDAFT, aes(x = zone_x, y = zone_y, fill = avg_P
   #geometrics
   geom_tile() +
   geom_text(aes(label = PPDA, size = 3)) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   
   #formatting
   labs(title = paste0(Match_Home," Open Play Defensive Actions Heat Map - Full Game"), 
@@ -7590,8 +7635,8 @@ HomePPDAHeatMapplotFT <- HomePPDAHeatMapDataFT %>%
   # add zone percentage numbers
   geom_text(data = average_PPDANZFT, aes(x = x, y = y, label = paste(PPDA, "%")), size = 5) +
   
-  scale_fill_paletteer_c(ColorScale_HomeC) +
-  scale_color_paletteer_d(ColorScale_Home) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
+  scale_colour_gradientn(colours = ColorScale_Home) +
   
   #formatting
   labs(title = paste0(Match_Home," Open Play Defensive Actions Heat Map"), 
@@ -7642,8 +7687,8 @@ AwayPPDAHeatMapplotFT <- AwayPPDAHeatMapDataFT %>%
   geom_text(data = Awayaverage_PPDANZFT, aes(x = x, y = y, label = paste(PPDA, "%")), size = 5) +
 
   
-  scale_fill_paletteer_c(ColorScale_AwayC) +
-  scale_color_paletteer_d(ColorScale_Away) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
+  scale_colour_gradientn(colours = ColorScale_Away) +
   
   #formatting
   labs(title = paste(Match_Away," Open Play Defensive Actions Heat Map"), 
@@ -7806,21 +7851,21 @@ HomePostPPDAHeatMapplotFT <- HomePPDAHeatMapDataFT %>%
   geom_text(data = Home_Post_DA_Passes_1st, aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Home_Text, size = 2) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Home),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
   
   #set scales
   scale_size(range = c(0.5, 2)) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   
   #wrap by half
   #facet_wrap(~period_displayName) +
   
   #formatting
   labs(title = paste(Match_Home,"Passes or Carries Post Successful DA - 1st Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: Red = Progressive or Blue = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: team colour = Progressive, grey = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
        caption =  My_caption) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
@@ -7899,21 +7944,21 @@ AwayPostPPDAHeatMapplotFT <- AwayPPDAHeatMapDataFT %>%
   geom_text(data = Away_Post_DA_Passes_1st, aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Away_Text, size = 2) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Away),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
   
   #set scales
   scale_size(range = c(0.5, 2)) +
-  scale_fill_paletteer_c(ColorScale_AwayC) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
 
   #wrap by half
   #facet_wrap(~period_displayName) +
   
   #formatting
   labs(title = paste(Match_Away,"Passes or Carries Post Successful DA - 1st Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: Red = Progressive or Blue = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: team colour = Progressive, grey = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
        caption =  My_caption) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
@@ -7990,18 +8035,18 @@ HomePostPPDAHeatMapplotFT <- HomePPDAHeatMapDataFT %>%
   geom_text(data = Home_Post_DA_Passes_2nd, aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Home_Text, size = 2) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Home),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
   
   #set scales
   scale_size(range = c(0.5, 2)) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   
   #formatting
   labs(title = paste(Match_Home,"Passes or Carries Post Successful DA - 2nd Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: Red = Progressive or Blue = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: team colour = Progressive, grey = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
        caption =  My_caption) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
@@ -8080,21 +8125,21 @@ AwayPostPPDAHeatMapplotFT <- AwayPPDAHeatMapDataFT %>%
   geom_text(data = Away_Post_DA_Passes_2nd, aes(x = finalX, y = finalY, label = receiver_shirt), color = Color_Away_Text, size = 2) +
   
   scale_colour_gradientn(
-    colors = c("#0000FF", "#BD1100"),
+    colors = c("grey60", Color_Away),
     values = scales::rescale(c(0, 1)), 
     breaks = scales::breaks_width(0.01), 
     name = "Progressive Pass") +
   
   #set scales
   scale_size(range = c(0.5, 2)) +
-  scale_fill_paletteer_c(ColorScale_AwayC) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
 
   #wrap by half
   #facet_wrap(~period_displayName) +
   
   #formatting
   labs(title = paste(Match_Away,"Passes or Carries Post Successful DA - 2nd Half"), 
-       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: Red = Progressive or Blue = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
+       subtitle = paste0(Match_Fixture,"  \nIncreased Colour = Higher Defensive Actions (DA), \nComets: team colour = Progressive, grey = Successful, \nCircle Number = Recieving player, Direction of Attack Right to Left"),
        caption =  My_caption) +
   theme(plot.background = element_rect(colour = "snow", fill = "snow"),
         plot.caption = element_markdown(),
@@ -8354,7 +8399,181 @@ plot_block(Match_Home)
 plot_block(Match_Away)
 ```
 
-# Shot Analysis
+
+```{r}
+#| label: season pressing setup
+#| output: false
+
+# Season pressing database built by Build_Pressing_Season_DB.R (one sheet,
+# every match's pressing events stacked). Rows are matched to the season's
+# games by date, and the pressing team is grouped as focus team / All Oppo.
+press_db <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/AI Pressing/Season 2627/Database/AI_Pressing_Season_2627.csv")
+has_press <- file.exists(press_db)
+
+no_press_plot <- function() {
+  ggplot() + annotate("text", x = 0.5, y = 0.5, size = 4,
+                      label = "No season pressing database yet - run Build_Pressing_Season_DB.R") +
+    theme_void() + theme(plot.background = element_rect(colour = "snow", fill = "snow"))
+}
+
+if (has_press) {
+  press <- readr::read_csv(press_db, guess_max = 100000, show_col_types = FALSE, progress = FALSE) %>%
+    filter(Home_Team == Match_Home | Away_Team == Match_Home) %>%
+    mutate(.date = as.Date(Game_date, format = "%d-%m-%Y"),
+           TeamName = ifelse(`Pressing Team` == Match_Home, Match_Home, Match_Away),
+           TeamName = factor(TeamName, levels = c(Match_Home, Match_Away)),
+           x = suppressWarnings(as.numeric(x)), y = suppressWarnings(as.numeric(y))) %>%
+    left_join(games %>% select(Date, Game_No, Game_Label, Opp_Abbr, game_name), by = c(".date" = "Date"))
+  press_games <- n_distinct(press$Fixture)
+  press_flag <- function(col) coalesce(suppressWarnings(as.numeric(press[[col]])), 0)
+  for (cl in c("Presses", "Successful_Presses", "Won_Possession", "Pushed_Opponent_Back", "Counter_Press",
+               "Group_Press", "Turnover", "Led to Shot", "Led to Goal", "Failed_Press", "Conceeded_Shot",
+               "Conceeded_Cross", "Conceeded_Free_Kick", "High Value Presses", "EPV Threat Prevented")) {
+    press[[cl]] <- press_flag(cl)
+  }
+
+  # opponent passes in the games that have pressing data (for passes per press)
+  opp_passes <- ev %>%
+    filter(game_name %in% press$game_name, is_pass) %>%
+    count(TeamName, name = "passes") %>%
+    mutate(TeamName = opp_of(TeamName))   # passes BY the opponent of the pressing side
+
+  press_team_summary <- press %>%
+    group_by(TeamName) %>%
+    summarise(Presses = sum(Presses), `Successful presses` = sum(Successful_Presses),
+              `Won possession` = sum(Won_Possession), `Pushed back` = sum(Pushed_Opponent_Back),
+              `Counter presses` = sum(Counter_Press), `Group presses` = sum(Group_Press),
+              Turnovers = sum(Turnover), `Led to shot` = sum(`Led to Shot`), `Led to goal` = sum(`Led to Goal`),
+              `Failed presses` = sum(Failed_Press),
+              `Conceded shot / cross / FK` = sum(Conceeded_Shot + Conceeded_Cross + Conceeded_Free_Kick),
+              `Presses in attacking third` = sum(coalesce(x >= 66.7, FALSE)),
+              `EPV threat prevented` = round(sum(`EPV Threat Prevented`), 2), .groups = "drop") %>%
+    left_join(opp_passes %>% mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))), by = "TeamName") %>%
+    mutate(`Press success %` = round(100 * `Successful presses` / Presses),
+           `Opp. passes per press` = round(passes / Presses, 2)) %>%
+    select(-passes)
+
+  press_by_game <- press %>%
+    group_by(TeamName, Game_No, Game_Label, Opp_Abbr) %>%
+    summarise(Presses = sum(Presses), Success = sum(Successful_Presses), Won = sum(Won_Possession), .groups = "drop") %>%
+    mutate(`Success %` = round(100 * Success / Presses)) %>%
+    arrange(TeamName, Game_No) %>%
+    group_by(TeamName) %>%
+    mutate(Presses_roll3 = zoo::rollapplyr(Presses, 3, mean, partial = TRUE)) %>%
+    ungroup()
+
+  # player minutes = the most minutes recorded for him in each game, summed
+  press_players <- press %>%
+    filter(TeamName == Match_Home, !is.na(playerId), playerId != "Team pressure") %>%
+    group_by(playerId, Fixture) %>%
+    summarise(mins = max(suppressWarnings(as.numeric(minutes_played)), na.rm = TRUE),
+              Presses = sum(Presses), Success = sum(Successful_Presses), Won = sum(Won_Possession),
+              Counter = sum(Counter_Press), HV = sum(`High Value Presses`), Shot = sum(`Led to Shot`),
+              Position = dplyr::first(Position), .groups = "drop") %>%
+    group_by(Player = playerId) %>%
+    summarise(Position = names(sort(table(Position), decreasing = TRUE))[1],
+              Games = n(), Minutes = round(sum(pmax(mins, 0))), Presses = sum(Presses),
+              `Presses p90` = ifelse(Minutes > 0, round(90 * Presses / Minutes, 1), NA),
+              `Success %` = round(100 * sum(Success) / Presses), `Won possession` = sum(Won),
+              `Counter presses` = sum(Counter), `High value` = sum(HV), `Led to shot` = sum(Shot),
+              .groups = "drop") %>%
+    arrange(desc(Presses))
+}
+```
+
+## Row
+```{r}
+#| title: Season Pressing Summary
+#| label: season press team table
+
+if (has_press) {
+  press_team_summary %>%
+    mutate(TeamName = as.character(TeamName)) %>%
+    pivot_longer(-TeamName, names_to = "Metric", values_to = "Total") %>%
+    mutate(`Per game` = ifelse(grepl("%|per press", Metric), NA, round(Total / press_games, 1))) %>%
+    pivot_wider(names_from = TeamName, values_from = c(Total, `Per game`), names_glue = "{TeamName} | {.value}") %>%
+    select(Metric, starts_with(paste0(Match_Home, " | ")), starts_with(paste0(Match_Away, " | "))) %>%
+    ai_gt("Pressing - Season", subtitle = paste0(Season_Label, " | ", press_games, " games with pressing data"), rowname = "Metric") %>%
+    gt_team_spanners() %>%
+    fmt_number(columns = contains(" | "), decimals = 1, drop_trailing_zeros = TRUE) %>%
+    tab_footnote("From the AI pressing model (Build_Pressing_Season_DB.R). Opp. passes per press = opponent passes in those games divided by presses (lower = more pressing). Definitions on the Methodology page.")
+} else {
+  htmltools::p("No season pressing database yet - run Build_Pressing_Season_DB.R")
+}
+```
+
+```{r}
+#| title: Presses by Game
+#| label: season presses by game
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+if (has_press) {
+  ggplot(press_by_game, aes(x = Game_No, y = Presses, colour = TeamName, group = TeamName)) +
+    geom_point(size = 1.8, alpha = 0.6) +
+    geom_line(aes(y = Presses_roll3), linewidth = 0.9) +
+    scale_colour_manual(values = team_cols, name = NULL) +
+    scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
+    labs(title = "Presses by Game",
+         subtitle = paste0(Season_Label, " | dots = each game, line = 3-game rolling"),
+         x = NULL, y = "Presses", caption = My_caption) +
+    line_theme() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+} else no_press_plot()
+```
+
+## Row
+```{r}
+#| title: Player Pressing (season)
+#| label: season press player table
+
+if (has_press) {
+  ai_gt(press_players, paste0(Match_Home, " - Player Pressing, Season"), rowname = "Player") %>%
+    gt_color_rows(columns = "Presses p90", palette = team_scale(Match_Home),
+                  domain = c(0, max(c(press_players$`Presses p90`, 1), na.rm = TRUE))) %>%
+    fmt_percent(columns = "Success %", decimals = 0, scale_values = FALSE) %>%
+    tab_footnote("Minutes are summed over games from the pressing model's minutes played. Team pressure rows with no player assigned are left out.")
+} else {
+  htmltools::p("No season pressing database yet - run Build_Pressing_Season_DB.R")
+}
+```
+
+## Press Maps {.flow}
+### Home
+```{r}
+#| title: Where Presses Happened
+#| label: season home press map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+plot_press_map <- function(team) {
+  d <- press %>% filter(TeamName == team, !is.na(x), !is.na(y))
+  ggplot(d) +
+    pitch_base() +
+    geom_bin_2d(aes(x = x, y = y), bins = 16, alpha = 0.85) +
+    scale_fill_gradient(low = "#FFFAFA", high = team_col(team), name = "Presses") +
+    pitch_title(paste0(team, " - Where Presses Happened (season)"),
+                paste0(Season_Label, " | ", nrow(d), " presses, ", pct_txt(sum(d$Successful_Presses), nrow(d)),
+                       " successful, ", round(100 * mean(d$x >= 66.7)), "% in the attacking third")) +
+    theme(legend.title = element_text(size = 6))
+}
+if (has_press) plot_press_map(Match_Home) else no_press_plot()
+```
+
+### Away
+```{r}
+#| title: Where Presses Happened
+#| label: season away press map
+#| fig-width: 6
+#| fig-height: 4.2
+#| fig-dpi: 200
+
+if (has_press) plot_press_map(Match_Away) else no_press_plot()
+```
+
+# Shots
 
 ```{r}
 #| include: false
@@ -8470,8 +8689,8 @@ xGDensityPlot <- dashboard_data %>%
     fill = after_stat(level), text = paste("xG: ", ..level..)), geom = "polygon", alpha = 0.4, adjust = 0.5, linewidth = 0.5) +
   
 
-  scale_color_paletteer_c(ColorScale_HomeC) +
-  scale_fill_paletteer_c(ColorScale_HomeC) +
+  scale_colour_gradientn(colours = ColorScale_HomeC) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   guides(fill = guide_legend(title = "xG Level")) +
   guides(color = guide_legend(title = "xG Level")) +
   scale_size_continuous(range = c(0.5, 7)) +
@@ -8544,8 +8763,8 @@ xGDensityPlotOppo <- Oppodashboard_data %>%
   stat_density_2d(aes(#color = after_stat(level), 
     fill = after_stat(level), text = paste("xG: ", ..level..)), geom = "polygon", alpha = 0.4, adjust = 0.5, linewidth = 0.5) +
 
-  scale_color_paletteer_c(ColorScale_AwayC) +
-  scale_fill_paletteer_c(ColorScale_AwayC) +
+  scale_colour_gradientn(colours = ColorScale_AwayC) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
   guides(fill = guide_legend(title = "xG Level")) +
   guides(color = guide_legend(title = "xG Level")) +
   scale_size_continuous(range = c(0.5, 7)) +
@@ -8644,7 +8863,7 @@ sizeRange <- c(2, 10)
 
   #colors
   #scale_fill_paletteer_d(ColorScale_Home, 1) +
-  scale_fill_paletteer_c(ColorScale_HomeC, 1) +
+  scale_fill_gradientn(colours = ColorScale_HomeC) +
   
   #Scale and limits
   scale_size(range = sizeRange) +
@@ -8746,7 +8965,7 @@ sizeRange <- c(2, 10)
     
   #colors
   #scale_fill_paletteer_d(ColorScale_Away, -1) +
-  scale_fill_paletteer_c(ColorScale_AwayC, 1) +
+  scale_fill_gradientn(colours = ColorScale_AwayC) +
 
   #Scale and limits
   scale_size(range = sizeRange) +
@@ -8989,7 +9208,6 @@ OPPO_S_plotWT_I
 state_selector("ss-shot-analysis-4", setup = page_setup_shot_analysis, width = 7, height = 5)
 ```
 
-# Goalkeepers
 
 ## Row
 ```{r}
@@ -9007,7 +9225,7 @@ ggplot(gk_game, aes(x = Game_No)) +
   scale_fill_manual(values = c(`TRUE` = col_success, `FALSE` = col_fail), guide = "none") +
   scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
   labs(title = paste0(Match_Home, " Goals Prevented by Game (", paste(gk_keepers, collapse = " / "), ")"),
-       subtitle = paste0(Season_Label, " | bar = xGOT faced minus goals conceded that game (blue = kept out more than expected), line = season running total"),
+       subtitle = paste0(Season_Label, " | bar = xGOT faced minus goals conceded that game (team colour = kept out more than expected, grey = fewer), line = season running total"),
        x = NULL, y = "Goals prevented", caption = My_caption) +
   line_theme(legend_position = "none") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
@@ -9066,182 +9284,7 @@ ggplot(gk_act) +
               paste0(Season_Label, " | saves, claims, punches, pick-ups and sweeper actions"))
 ```
 
-# Pressing
-
-```{r}
-#| label: season pressing setup
-#| output: false
-
-# Season pressing database built by Build_Pressing_Season_DB.R (one sheet,
-# every match's pressing events stacked). Rows are matched to the season's
-# games by date, and the pressing team is grouped as focus team / All Oppo.
-press_db <- paste0("~/Documents/Dropbox files/AI LFC data/Data Sets/AI Pressing/Season 2627/Database/AI_Pressing_Season_2627.csv")
-has_press <- file.exists(press_db)
-
-no_press_plot <- function() {
-  ggplot() + annotate("text", x = 0.5, y = 0.5, size = 4,
-                      label = "No season pressing database yet - run Build_Pressing_Season_DB.R") +
-    theme_void() + theme(plot.background = element_rect(colour = "snow", fill = "snow"))
-}
-
-if (has_press) {
-  press <- readr::read_csv(press_db, guess_max = 100000, show_col_types = FALSE, progress = FALSE) %>%
-    filter(Home_Team == Match_Home | Away_Team == Match_Home) %>%
-    mutate(.date = as.Date(Game_date, format = "%d-%m-%Y"),
-           TeamName = ifelse(`Pressing Team` == Match_Home, Match_Home, Match_Away),
-           TeamName = factor(TeamName, levels = c(Match_Home, Match_Away)),
-           x = suppressWarnings(as.numeric(x)), y = suppressWarnings(as.numeric(y))) %>%
-    left_join(games %>% select(Date, Game_No, Game_Label, Opp_Abbr, game_name), by = c(".date" = "Date"))
-  press_games <- n_distinct(press$Fixture)
-  press_flag <- function(col) coalesce(suppressWarnings(as.numeric(press[[col]])), 0)
-  for (cl in c("Presses", "Successful_Presses", "Won_Possession", "Pushed_Opponent_Back", "Counter_Press",
-               "Group_Press", "Turnover", "Led to Shot", "Led to Goal", "Failed_Press", "Conceeded_Shot",
-               "Conceeded_Cross", "Conceeded_Free_Kick", "High Value Presses", "EPV Threat Prevented")) {
-    press[[cl]] <- press_flag(cl)
-  }
-
-  # opponent passes in the games that have pressing data (for passes per press)
-  opp_passes <- ev %>%
-    filter(game_name %in% press$game_name, is_pass) %>%
-    count(TeamName, name = "passes") %>%
-    mutate(TeamName = opp_of(TeamName))   # passes BY the opponent of the pressing side
-
-  press_team_summary <- press %>%
-    group_by(TeamName) %>%
-    summarise(Presses = sum(Presses), `Successful presses` = sum(Successful_Presses),
-              `Won possession` = sum(Won_Possession), `Pushed back` = sum(Pushed_Opponent_Back),
-              `Counter presses` = sum(Counter_Press), `Group presses` = sum(Group_Press),
-              Turnovers = sum(Turnover), `Led to shot` = sum(`Led to Shot`), `Led to goal` = sum(`Led to Goal`),
-              `Failed presses` = sum(Failed_Press),
-              `Conceded shot / cross / FK` = sum(Conceeded_Shot + Conceeded_Cross + Conceeded_Free_Kick),
-              `Presses in attacking third` = sum(coalesce(x >= 66.7, FALSE)),
-              `EPV threat prevented` = round(sum(`EPV Threat Prevented`), 2), .groups = "drop") %>%
-    left_join(opp_passes %>% mutate(TeamName = factor(TeamName, levels = c(Match_Home, Match_Away))), by = "TeamName") %>%
-    mutate(`Press success %` = round(100 * `Successful presses` / Presses),
-           `Opp. passes per press` = round(passes / Presses, 2)) %>%
-    select(-passes)
-
-  press_by_game <- press %>%
-    group_by(TeamName, Game_No, Game_Label, Opp_Abbr) %>%
-    summarise(Presses = sum(Presses), Success = sum(Successful_Presses), Won = sum(Won_Possession), .groups = "drop") %>%
-    mutate(`Success %` = round(100 * Success / Presses)) %>%
-    arrange(TeamName, Game_No) %>%
-    group_by(TeamName) %>%
-    mutate(Presses_roll3 = zoo::rollapplyr(Presses, 3, mean, partial = TRUE)) %>%
-    ungroup()
-
-  # player minutes = the most minutes recorded for him in each game, summed
-  press_players <- press %>%
-    filter(TeamName == Match_Home, !is.na(playerId), playerId != "Team pressure") %>%
-    group_by(playerId, Fixture) %>%
-    summarise(mins = max(suppressWarnings(as.numeric(minutes_played)), na.rm = TRUE),
-              Presses = sum(Presses), Success = sum(Successful_Presses), Won = sum(Won_Possession),
-              Counter = sum(Counter_Press), HV = sum(`High Value Presses`), Shot = sum(`Led to Shot`),
-              Position = dplyr::first(Position), .groups = "drop") %>%
-    group_by(Player = playerId) %>%
-    summarise(Position = names(sort(table(Position), decreasing = TRUE))[1],
-              Games = n(), Minutes = round(sum(pmax(mins, 0))), Presses = sum(Presses),
-              `Presses p90` = ifelse(Minutes > 0, round(90 * Presses / Minutes, 1), NA),
-              `Success %` = round(100 * sum(Success) / Presses), `Won possession` = sum(Won),
-              `Counter presses` = sum(Counter), `High value` = sum(HV), `Led to shot` = sum(Shot),
-              .groups = "drop") %>%
-    arrange(desc(Presses))
-}
-```
-
-## Row
-```{r}
-#| title: Season Pressing Summary
-#| label: season press team table
-
-if (has_press) {
-  press_team_summary %>%
-    mutate(TeamName = as.character(TeamName)) %>%
-    pivot_longer(-TeamName, names_to = "Metric", values_to = "Total") %>%
-    mutate(`Per game` = ifelse(grepl("%|per press", Metric), NA, round(Total / press_games, 1))) %>%
-    pivot_wider(names_from = TeamName, values_from = c(Total, `Per game`), names_glue = "{TeamName} | {.value}") %>%
-    select(Metric, starts_with(paste0(Match_Home, " | ")), starts_with(paste0(Match_Away, " | "))) %>%
-    ai_gt("Pressing - Season", subtitle = paste0(Season_Label, " | ", press_games, " games with pressing data"), rowname = "Metric") %>%
-    gt_team_spanners() %>%
-    fmt_number(columns = contains(" | "), decimals = 1, drop_trailing_zeros = TRUE) %>%
-    tab_footnote("From the AI pressing model (Build_Pressing_Season_DB.R). Opp. passes per press = opponent passes in those games divided by presses (lower = more pressing). Definitions on the Methodology page.")
-} else {
-  htmltools::p("No season pressing database yet - run Build_Pressing_Season_DB.R")
-}
-```
-
-```{r}
-#| title: Presses by Game
-#| label: season presses by game
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-if (has_press) {
-  ggplot(press_by_game, aes(x = Game_No, y = Presses, colour = TeamName, group = TeamName)) +
-    geom_point(size = 1.8, alpha = 0.6) +
-    geom_line(aes(y = Presses_roll3), linewidth = 0.9) +
-    scale_colour_manual(values = team_cols, name = NULL) +
-    scale_x_continuous(breaks = games$Game_No, labels = games$Opp_Abbr) +
-    labs(title = "Presses by Game",
-         subtitle = paste0(Season_Label, " | dots = each game, line = 3-game rolling"),
-         x = NULL, y = "Presses", caption = My_caption) +
-    line_theme() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
-} else no_press_plot()
-```
-
-## Row
-```{r}
-#| title: Player Pressing (season)
-#| label: season press player table
-
-if (has_press) {
-  ai_gt(press_players, paste0(Match_Home, " - Player Pressing, Season"), rowname = "Player") %>%
-    gt_color_rows(columns = "Presses p90", palette = team_scale(Match_Home),
-                  domain = c(0, max(c(press_players$`Presses p90`, 1), na.rm = TRUE))) %>%
-    fmt_percent(columns = "Success %", decimals = 0, scale_values = FALSE) %>%
-    tab_footnote("Minutes are summed over games from the pressing model's minutes played. Team pressure rows with no player assigned are left out.")
-} else {
-  htmltools::p("No season pressing database yet - run Build_Pressing_Season_DB.R")
-}
-```
-
-## Press Maps {.flow}
-### Home
-```{r}
-#| title: Where Presses Happened
-#| label: season home press map
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-plot_press_map <- function(team) {
-  d <- press %>% filter(TeamName == team, !is.na(x), !is.na(y))
-  ggplot(d) +
-    pitch_base() +
-    geom_bin_2d(aes(x = x, y = y), bins = 16, alpha = 0.85) +
-    scale_fill_gradient(low = "#FFFAFA", high = team_col(team), name = "Presses") +
-    pitch_title(paste0(team, " - Where Presses Happened (season)"),
-                paste0(Season_Label, " | ", nrow(d), " presses, ", pct_txt(sum(d$Successful_Presses), nrow(d)),
-                       " successful, ", round(100 * mean(d$x >= 66.7)), "% in the attacking third")) +
-    theme(legend.title = element_text(size = 6))
-}
-if (has_press) plot_press_map(Match_Home) else no_press_plot()
-```
-
-### Away
-```{r}
-#| title: Where Presses Happened
-#| label: season away press map
-#| fig-width: 6
-#| fig-height: 4.2
-#| fig-dpi: 200
-
-if (has_press) plot_press_map(Match_Away) else no_press_plot()
-```
-
-# Methodology
+# Methods
 
 <!--
   HOW TO EDIT THIS PAGE
@@ -9268,7 +9311,7 @@ if (has_press) plot_press_map(Match_Away) else no_press_plot()
 
 **Game-state buttons:** on the Season Summary (simulations), Passing, Player, EPV, PPDA, xG and Shot pages every chart and table has buttons for All, Winning, Drawing, Losing and Garbage Time. Each state is built from the same code with the events filtered to that state; a state with too little data shows a note instead of a chart.
 
-**Recent form:** the last 5 games' per-game averages against the season average (blue = better, red = worse; for goals, xG, shots and EPV against and PPDA, lower is better). **Home vs away:** per-game averages split by venue.
+**Recent form:** the last 5 games' per-game averages against the season average (team colour = better, grey = worse; for goals, xG, shots and EPV against and PPDA, lower is better). **Home vs away:** per-game averages split by venue.
 
 **Up to 1st sub (season):** each game up to that game's first substitution, skipping subs before minute 15 (`min_sub_window`); subtitles show the median first-sub minute.
 
