@@ -6189,7 +6189,7 @@ press_rows <- tryCatch({
   pdb <- readr::read_csv(press_db_file, show_col_types = FALSE, guess_max = 100000)
   pdb <- pdb[pdb$`Pressing Team` %in% Focus_Team & pdb$Fixture %in% setdiff(season_keys, Match_Fixture), ]
   if (!nrow(pm) || !nrow(pdb)) NULL else list(
-    match = press_summary(pm) %>% rename(match = value),
+    match = press_summary(pm) %>% dplyr::rename(match = value),
     season = pdb %>% group_split(Fixture) %>% lapply(press_summary) %>% bind_rows() %>%
       group_by(KPI) %>%
       summarise(season = mean(value, na.rm = TRUE), lo = min(value, na.rm = TRUE),
