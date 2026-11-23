@@ -1,0 +1,230 @@
+---
+title: "Dr Barts"
+subtitle: "Team Analysis"
+image: Images/Social_profile.png
+
+format:
+  html:
+    theme:
+      - litera
+      - Matchdash.scss
+    page-layout: full
+---
+
+:::::: hero
+:::: hero-text
+# Dr Barts
+
+<p class="hero-kicker">
+
+Football Stats Hub
+
+</p>
+
+<p class="hero-blurb">
+
+I am a part time football analyst specialising in the Quarto and R ecosystems.
+
+</p>
+
+::: hero-links
+<a class="hero-link" href="https://github.com/Barts78"><i class="bi bi-github"></i></a> <a class="hero-link" href="https://twitter.com/Barts78"><i class="bi bi-twitter"></i></a> <a class="hero-link" href="https://www.linkedin.com/in/phil-barter-55500122/"><i class="bi bi-linkedin"></i></a> <a class="hero-link" href="https://bsky.app/profile/barts78.bsky.social"><i class="bi bi-bluesky"></i></a>
+:::
+::::
+
+::: hero-portrait
+![](Images/Social_profile.png){.hero-avatar}
+:::
+::::::
+
+:::: bio-card
+::: bio-title
+<b>Bio</b>
+:::
+
+This is a home for my football visualisation work across **AnfieldIndex**, **The Under Pressure Podcast**.
+
+<div style="margin-top:1rem; text-align:center;">
+
+<a href="https://patreon.com/UnderPressurePodcastLFC?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_fan&utm_content=copyLink"
+   target="_blank"
+   class="btn btn-danger btn-lg"
+   style="font-weight:600;">
+
+🎙️ Join the Under Pressure Patreon
+
+</a>
+
+<p style="margin-top:0.75rem; font-size:0.9em; color:#666;">
+Support the show and get access to exclusive previews, bonus podcasts and additional analysis.
+</p>
+
+</div>
+
+<p class="bio-affiliation" style="margin-top:0.75rem; font-size:0.85em; color:#666;">
+Dr Phil Barter – Associate Professor, Middlesex University (Mauritius &amp; London). ORCID: <a href="https://orcid.org/0009-0005-4041-4288" target="_blank">https://orcid.org/0009-0005-4041-4288</a>. Views and analysis are my own and do not represent the university.
+</p>
+::::
+## Browse Special or Preview
+
+```{r}
+#| echo: false
+#| message: false
+#| results: asis
+
+base_dir <- "."
+
+# ------------------------------------------------------------
+# Sections in display order
+# ------------------------------------------------------------
+
+section_dirs <- c(
+  "Season Trends",
+  "Match Previews",
+  "Specials"
+)
+
+# ------------------------------------------------------------
+# Thumbnails
+# ------------------------------------------------------------
+
+section_thumbs <- c(
+  "Season Trends"  = "Images/Premier-League_Reactivity-Ball.png",
+  "Match Previews" = "Images/Premier-League_Reactivity-Ball.png",
+  "Specials"       = "Images/champions-league-ball.png"
+)
+
+# ------------------------------------------------------------
+# Descriptions
+# ------------------------------------------------------------
+
+section_descriptions <- c(
+  "Season Trends" =
+    "Explore season-wide trends, team performance and league analysis.",
+
+  "Match Previews" =
+    "Match-by-match previews, opposition analysis and key performance indicators.",
+
+  "Specials" =
+    "Special reports and standalone football analysis."
+)
+
+# ------------------------------------------------------------
+# Find target
+#
+# Season Trends:
+#   Link DIRECTLY to its dashboard HTML.
+#
+# Match Previews / Specials:
+#   Link to their folder/index.
+# ------------------------------------------------------------
+
+find_target <- function(section) {
+
+  section_path <- file.path(base_dir, section)
+
+  if (!dir.exists(section_path)) {
+    return(NULL)
+  }
+
+  # ---- SEASON TRENDS: direct dashboard link ----
+
+  if (section == "Season Trends") {
+
+    docs_dir <- file.path(section_path, "docs")
+
+    if (!dir.exists(docs_dir)) {
+      return(NULL)
+    }
+
+    html_files <- list.files(
+      docs_dir,
+      pattern = "\\.html$",
+      full.names = FALSE
+    )
+
+    if (length(html_files) == 0) {
+      return(NULL)
+    }
+
+    # Same behaviour as a normal matchday dashboard
+    html_file <- sort(html_files)[1]
+
+    return(
+      file.path(
+        section,
+        "docs",
+        html_file
+      )
+    )
+  }
+
+  # ---- MATCH PREVIEWS / SPECIALS ----
+
+  # If rendered index.html exists
+  index_html <- file.path(section_path, "index.html")
+
+  if (file.exists(index_html)) {
+    return(file.path(section, "index.html"))
+  }
+
+  # Otherwise link to folder
+  paste0(section, "/")
+}
+
+# ------------------------------------------------------------
+# Create cards
+# ------------------------------------------------------------
+
+cards <- vapply(section_dirs, function(section) {
+
+  target <- find_target(section)
+
+  if (is.null(target)) {
+    return(NA_character_)
+  }
+
+  # Clean URL
+  target <- gsub("\\\\", "/", target)
+  url <- utils::URLencode(target)
+
+  thumb <- section_thumbs[[section]]
+  description <- section_descriptions[[section]]
+
+  sprintf(
+    paste0(
+      '<div class="g-col-12 g-col-md-6 g-col-lg-4">\n',
+      '  <div class="card season-card">\n',
+      '    <div class="season-card-media">\n',
+      '      <img src="%s" class="card-img-top img-fluid" alt="%s thumbnail">\n',
+      '    </div>\n',
+      '    <div class="card-body">\n',
+      '      <h3><a href="%s">%s</a></h3>\n',
+      '      <div class="text-muted">%s</div>\n',
+      '    </div>\n',
+      '  </div>\n',
+      '</div>\n'
+    ),
+    thumb,
+    section,
+    url,
+    section,
+    description
+  )
+
+}, character(1))
+
+cards <- cards[!is.na(cards)]
+
+# ------------------------------------------------------------
+# Output
+# ------------------------------------------------------------
+
+output <- paste0(
+  '<div class="grid">\n',
+  paste(cards, collapse = "\n"),
+  '\n</div>\n'
+)
+
+knitr::asis_output(output)
+```
